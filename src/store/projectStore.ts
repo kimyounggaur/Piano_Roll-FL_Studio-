@@ -1,35 +1,39 @@
 import { create } from 'zustand';
 import type {
-  Project, Track, Note, ProjectSettings,
-  Viewport, EditTool,
+  Project, Track, Note, NoteId, TrackId,
+  ProjectSettings, PianoRollViewport, PianoRollTool,
+  SnapValue, ScaleType,
 } from '../types/music';
 import { ticksPerBar, snapUnitToTicks, snapTick } from '../utils/time';
+import { DEFAULT_PPQ, DEFAULT_BPM } from '../types/music';
 
-// ── Defaults ──────────────────────────────────────────────────────────
-const DEFAULT_SETTINGS: ProjectSettings = {
-  bpm: 120,
-  ppq: 480,
-  timeSignature: { numerator: 4, denominator: 4 },
-  bars: 8,
-  loopStartTick: 0,
-  loopEndTick: 0,
-  snapUnit: '1/16',
-  scaleRoot: 0,
-  scaleName: 'none',
-};
+// ═══════════════════════════════════════════════════════════════════
+//  Selection rect (tick-space, not pixel-space)
+// ═══════════════════════════════════════════════════════════════════
+export interface SelectionRect {
+  startTick: number;
+  endTick: number;
+  minPitch: number;
+  maxPitch: number;
+}
 
-const DEFAULT_VIEWPORT: Viewport = {
-  scrollX: 0,
-  scrollY: 0,
-  pixelsPerTick: 0.25,
-  keyHeight: 14,
-};
+// ═══════════════════════════════════════════════════════════════════
+//  Factory helpers
+// ═══════════════════════════════════════════════════════════════════
+const TRACK_COLORS = [
+  '#4a9eff', '#ff6b6b', '#6bcb77', '#ffd93d',
+  '#c77dff', '#ff9f43', '#48dbfb', '#ff6fa1',
+] as const;
 
-function makeTrack(name: string, color: string): Track {
+function nanoid(): string {
+  return Math.random().toString(36).slice(2, 11) + Date.now().toString(36);
+}
+
+function makeTrack(name: string, colorIndex: number): Track {
   return {
     id: nanoid(),
     name,
-    color,
+    color: TRACK_COLORS[colorIndex % TRACK_COLORS.length],
     instrument: { type: 'synth', preset: 'triangle' },
     channel: 1,
     muted: false,
@@ -40,249 +44,539 @@ function makeTrack(name: string, color: string): Track {
   };
 }
 
-// ── Store shape ───────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+//  createDefaultProject
+//  Returns a fresh project with one empty track and sensible defaults.
+//  Example state:
+//    bpm: 120, ppq: 480, 4/4 time, 8 bars
+//    snapUnit: '1/16', no scale
+//    Track 1 — empty, colour #4a9eff
+// ═══════════════════════════════════════════════════════════════════
+export function createDefaultProject(): Project {
+  const track = makeTrack('Track 1', 0);
+  return {
+    name: 'New Project',
+    settings: {
+      bpm: DEFAULT_BPM,
+      ppq: DEFAULT_PPQ,
+      timeSignature: { numerator: 4, denominator: 4 },
+      bars: 8,
+      loopStartTick: 0,
+      loopEndTick: 0,
+      snapUnit: '1/16',
+      scaleRoot: 0,
+      scaleName: 'none',
+    },
+    tracks: [track],
+    activeTrackId: track.id,
+  };
+}
+
+const DEFAULT_VIEWPORT: PianoRollViewport = {
+  scrollX: 0,
+  scrollY: 0,
+  pixelsPerTick: 0.25,
+  keyHeight: 14,
+};
+
+const LS_KEY = 'rolllab_project';
+
+// ═══════════════════════════════════════════════════════════════════
+//  Pure helpers (no store access — easy to unit-test)
+// ═══════════════════════════════════════════════════════════════════
+
+/** Closest SnapValue for an arbitrary tick count. */
+function ticksToSnapValue(ticks: number, ppq: number): SnapValue {
+  const UNITS: SnapValue[] = ['1/1','1/2','1/4','1/8','1/16','1/32','1/64'];
+  let best: SnapValue = '1/16';
+  let bestDiff = Infinity;
+  for (const u of UNITS) {
+    const t = snapUnitToTicks(u, ppq);
+    const diff = Math.abs(t - ticks);
+    if (diff < bestDiff) { bestDiff = diff; best = u; }
+  }
+  return best;
+}
+
+/** Merge a partial note patch while enforcing invariants. */
+function applyNotePatch(
+  note: Note,
+  patch: Partial<Note>,
+  minDuration: number,
+  totalTicks: number
+): Note {
+  const merged = { ...note, ...patch };
+  merged.pitch        = Math.max(0,   Math.min(127, merged.pitch));
+  merged.startTick    = Math.max(0,   Math.min(totalTicks - minDuration, merged.startTick));
+  merged.durationTicks = Math.max(minDuration, merged.durationTicks);
+  merged.velocity     = Math.max(1,   Math.min(127, merged.velocity));
+  return merged;
+}
+
+function updateTrackNotes(
+  tracks: Track[],
+  trackId: TrackId,
+  fn: (notes: Note[]) => Note[]
+): Track[] {
+  return tracks.map((t) => t.id === trackId ? { ...t, notes: fn(t.notes) } : t);
+}
+
+function updateAllNotes(
+  tracks: Track[],
+  fn: (note: Note) => Note
+): Track[] {
+  return tracks.map((t) => ({ ...t, notes: t.notes.map(fn) }));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Store interface
+// ═══════════════════════════════════════════════════════════════════
 interface ProjectStore {
   project: Project;
-  viewport: Viewport;
-  activeTool: EditTool;
+  viewport: PianoRollViewport;
+  activeTool: PianoRollTool;
   playheadTick: number;
   isPlaying: boolean;
   isLooping: boolean;
   isMetronome: boolean;
 
-  // project mutations
+  // ── computed selectors ────────────────────────────────────────────
+  /** Returns the currently active track, or null if none. */
+  activeTrack: () => Track | null;
+  /** Snaps a raw tick to the current grid. */
+  snapTickValue: (tick: number) => number;
+  /** Total tick length of the arrangement. */
+  totalTicks: () => number;
+  /** Current snap resolution in ticks. */
+  snapTicks: () => number;
+
+  // ── project ───────────────────────────────────────────────────────
   setProjectName: (name: string) => void;
   updateSettings: (partial: Partial<ProjectSettings>) => void;
+  setBpm: (bpm: number) => void;
+  setSnapUnit: (unit: SnapValue) => void;
+  /** Accepts a raw tick count and finds the closest SnapValue. */
+  setSnapTicks: (ticks: number) => void;
+  setTool: (tool: PianoRollTool) => void;
+  /** Convenience alias for setTool (keeps existing components working). */
+  setActiveTool: (tool: PianoRollTool) => void;
+  setScale: (root: number, scaleName: ScaleType) => void;
 
-  // track mutations
+  // ── tracks ────────────────────────────────────────────────────────
   addTrack: () => void;
-  removeTrack: (id: string) => void;
-  setActiveTrack: (id: string) => void;
-  updateTrack: (id: string, partial: Partial<Omit<Track, 'id' | 'notes'>>) => void;
+  removeTrack: (id: TrackId) => void;
+  setActiveTrack: (id: TrackId) => void;
+  updateTrack: (id: TrackId, partial: Partial<Omit<Track, 'id' | 'notes'>>) => void;
+  toggleTrackMute: (id: TrackId) => void;
+  toggleTrackSolo: (id: TrackId) => void;
 
-  // note mutations
-  addNote: (trackId: string, note: Omit<Note, 'id'>) => void;
-  removeNote: (trackId: string, noteId: string) => void;
-  updateNote: (trackId: string, noteId: string, partial: Partial<Note>) => void;
-  setNotes: (trackId: string, notes: Note[]) => void;
-  selectNote: (trackId: string, noteId: string, multi: boolean) => void;
+  // ── notes (individual) ────────────────────────────────────────────
+  addNote: (trackId: TrackId, note: Omit<Note, 'id'>) => void;
+  removeNote: (trackId: TrackId, noteId: NoteId) => void;
+  /** Alias for removeNote. */
+  deleteNote: (trackId: TrackId, noteId: NoteId) => void;
+  updateNote: (trackId: TrackId, noteId: NoteId, partial: Partial<Note>) => void;
+  setNotes: (trackId: TrackId, notes: Note[]) => void;
+
+  // ── notes (selection) ────────────────────────────────────────────
+  /**
+   * Select a note.
+   * @param additive - if true, adds to current selection (Shift-click);
+   *                   if false, replaces selection.
+   */
+  selectNote: (trackId: TrackId, noteId: NoteId, additive: boolean) => void;
+  deselectAll: () => void;
+  /** Alias for deselectAll. */
   clearSelection: () => void;
+  /** Select all notes inside a tick/pitch rectangle (rubber-band). */
+  selectNotesInRect: (rect: SelectionRect) => void;
   deleteSelected: () => void;
+  /**
+   * Translate all selected notes by (deltaPitch, deltaTicks).
+   * Pitch is clamped to [0, 127]; startTick to [0, totalTicks − duration].
+   */
+  moveSelectedNotes: (deltaPitch: number, deltaTicks: number) => void;
+  /**
+   * Extend or shorten all selected notes by deltaTicks.
+   * Minimum duration is enforced to snapTicks.
+   */
+  resizeSelectedNotes: (deltaTicks: number) => void;
+  /**
+   * Copy all selected notes and offset them by one bar.
+   * Originals are deselected; copies are selected.
+   */
+  duplicateSelectedNotes: () => void;
+  setVelocityForSelectedNotes: (velocity: number) => void;
 
-  // viewport
-  setViewport: (partial: Partial<Viewport>) => void;
-
-  // tool
-  setActiveTool: (tool: EditTool) => void;
-
-  // transport state
+  // ── transport ────────────────────────────────────────────────────
   setPlayheadTick: (tick: number) => void;
   setIsPlaying: (v: boolean) => void;
   setIsLooping: (v: boolean) => void;
   setIsMetronome: (v: boolean) => void;
 
-  // persistence
+  // ── viewport ─────────────────────────────────────────────────────
+  setViewport: (partial: Partial<PianoRollViewport>) => void;
+
+  // ── persistence ──────────────────────────────────────────────────
+  saveProjectToLocalStorage: () => void;
+  loadProjectFromLocalStorage: () => boolean;
   exportJSON: () => string;
+  /** Alias for exportJSON. */
+  exportProjectJson: () => string;
   importJSON: (json: string) => void;
-
-  // computed helpers
-  snapTickValue: (tick: number) => number;
-  totalTicks: () => number;
+  /** Alias for importJSON. */
+  importProjectJson: (json: string) => void;
 }
 
-// ── Implementation ────────────────────────────────────────────────────
-export const useProjectStore = create<ProjectStore>((set, get) => {
-  const initialTrack = makeTrack('Track 1', '#4a9eff');
-  return {
-    project: {
-      name: 'New Project',
-      settings: DEFAULT_SETTINGS,
-      tracks: [initialTrack],
-      activeTrackId: initialTrack.id,
-    },
-    viewport: DEFAULT_VIEWPORT,
-    activeTool: 'draw',
-    playheadTick: 0,
-    isPlaying: false,
-    isLooping: true,
-    isMetronome: false,
+// ═══════════════════════════════════════════════════════════════════
+//  Implementation
+// ═══════════════════════════════════════════════════════════════════
+export const useProjectStore = create<ProjectStore>((set, get) => ({
+  project:      createDefaultProject(),
+  viewport:     DEFAULT_VIEWPORT,
+  activeTool:   'draw',
+  playheadTick: 0,
+  isPlaying:    false,
+  isLooping:    true,
+  isMetronome:  false,
 
-    setProjectName: (name) =>
-      set((s) => ({ project: { ...s.project, name } })),
+  // ── computed selectors ──────────────────────────────────────────
+  activeTrack: () => {
+    const { project } = get();
+    return project.tracks.find((t) => t.id === project.activeTrackId) ?? null;
+  },
 
-    updateSettings: (partial) =>
-      set((s) => ({
+  snapTicks: () => {
+    const { settings } = get().project;
+    return snapUnitToTicks(settings.snapUnit, settings.ppq);
+  },
+
+  snapTickValue: (tick) => {
+    const { settings } = get().project;
+    return snapTick(tick, snapUnitToTicks(settings.snapUnit, settings.ppq));
+  },
+
+  totalTicks: () => {
+    const { settings } = get().project;
+    return ticksPerBar(settings.ppq, settings.timeSignature) * settings.bars;
+  },
+
+  // ── project ────────────────────────────────────────────────────
+  setProjectName: (name) =>
+    set((s) => ({ project: { ...s.project, name } })),
+
+  updateSettings: (partial) =>
+    set((s) => ({
+      project: { ...s.project, settings: { ...s.project.settings, ...partial } },
+    })),
+
+  setBpm: (bpm) =>
+    set((s) => ({
+      project: { ...s.project, settings: { ...s.project.settings, bpm: Math.max(1, Math.min(999, bpm)) } },
+    })),
+
+  setSnapUnit: (unit) =>
+    set((s) => ({
+      project: { ...s.project, settings: { ...s.project.settings, snapUnit: unit } },
+    })),
+
+  setSnapTicks: (ticks) => {
+    const { ppq } = get().project.settings;
+    const unit = ticksToSnapValue(ticks, ppq);
+    set((s) => ({
+      project: { ...s.project, settings: { ...s.project.settings, snapUnit: unit } },
+    }));
+  },
+
+  setTool: (tool) => set({ activeTool: tool }),
+  setActiveTool: (tool) => set({ activeTool: tool }),
+
+  setScale: (root, scaleName) =>
+    set((s) => ({
+      project: { ...s.project, settings: { ...s.project.settings, scaleRoot: root, scaleName } },
+    })),
+
+  // ── tracks ─────────────────────────────────────────────────────
+  addTrack: () =>
+    set((s) => {
+      const track = makeTrack(`Track ${s.project.tracks.length + 1}`, s.project.tracks.length);
+      return {
         project: {
           ...s.project,
-          settings: { ...s.project.settings, ...partial },
+          tracks: [...s.project.tracks, track],
+          activeTrackId: track.id,
         },
-      })),
+      };
+    }),
 
-    addTrack: () =>
-      set((s) => {
-        const colors = ['#4a9eff', '#ff6b6b', '#6bcb77', '#ffd93d', '#c77dff', '#ff9f43'];
-        const color = colors[s.project.tracks.length % colors.length];
-        const track = makeTrack(`Track ${s.project.tracks.length + 1}`, color);
-        return {
-          project: {
-            ...s.project,
-            tracks: [...s.project.tracks, track],
-            activeTrackId: track.id,
-          },
-        };
-      }),
+  removeTrack: (id) =>
+    set((s) => {
+      if (s.project.tracks.length <= 1) return s; // never remove last track
+      const tracks = s.project.tracks.filter((t) => t.id !== id);
+      const activeTrackId =
+        s.project.activeTrackId === id ? (tracks[0]?.id ?? null) : s.project.activeTrackId;
+      return { project: { ...s.project, tracks, activeTrackId } };
+    }),
 
-    removeTrack: (id) =>
-      set((s) => {
-        const tracks = s.project.tracks.filter((t) => t.id !== id);
-        const activeTrackId =
-          s.project.activeTrackId === id ? (tracks[0]?.id ?? null) : s.project.activeTrackId;
-        return { project: { ...s.project, tracks, activeTrackId } };
-      }),
+  setActiveTrack: (id) =>
+    set((s) => ({ project: { ...s.project, activeTrackId: id } })),
 
-    setActiveTrack: (id) =>
-      set((s) => ({ project: { ...s.project, activeTrackId: id } })),
+  updateTrack: (id, partial) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => t.id === id ? { ...t, ...partial } : t),
+      },
+    })),
 
-    updateTrack: (id, partial) =>
-      set((s) => ({
-        project: {
-          ...s.project,
-          tracks: s.project.tracks.map((t) =>
-            t.id === id ? { ...t, ...partial } : t
-          ),
-        },
-      })),
+  toggleTrackMute: (id) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => t.id === id ? { ...t, muted: !t.muted } : t),
+      },
+    })),
 
-    addNote: (trackId, note) =>
-      set((s) => ({
-        project: {
-          ...s.project,
-          tracks: s.project.tracks.map((t) =>
-            t.id === trackId
-              ? { ...t, notes: [...t.notes, { ...note, id: nanoid() }] }
-              : t
-          ),
-        },
-      })),
+  toggleTrackSolo: (id) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => t.id === id ? { ...t, solo: !t.solo } : t),
+      },
+    })),
 
-    removeNote: (trackId, noteId) =>
-      set((s) => ({
-        project: {
-          ...s.project,
-          tracks: s.project.tracks.map((t) =>
-            t.id === trackId
-              ? { ...t, notes: t.notes.filter((n) => n.id !== noteId) }
-              : t
-          ),
-        },
-      })),
+  // ── notes (individual) ─────────────────────────────────────────
+  addNote: (trackId, note) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateTrackNotes(s.project.tracks, trackId, (notes) => [
+          ...notes, { ...note, id: nanoid(), selected: false },
+        ]),
+      },
+    })),
 
-    updateNote: (trackId, noteId, partial) =>
-      set((s) => ({
-        project: {
-          ...s.project,
-          tracks: s.project.tracks.map((t) =>
-            t.id === trackId
-              ? {
-                  ...t,
-                  notes: t.notes.map((n) =>
-                    n.id === noteId ? { ...n, ...partial } : n
-                  ),
-                }
-              : t
-          ),
-        },
-      })),
+  removeNote: (trackId, noteId) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateTrackNotes(s.project.tracks, trackId, (notes) =>
+          notes.filter((n) => n.id !== noteId)
+        ),
+      },
+    })),
 
-    setNotes: (trackId, notes) =>
-      set((s) => ({
-        project: {
-          ...s.project,
-          tracks: s.project.tracks.map((t) =>
-            t.id === trackId ? { ...t, notes } : t
-          ),
-        },
-      })),
+  deleteNote: (trackId, noteId) => get().removeNote(trackId, noteId),
 
-    selectNote: (trackId, noteId, multi) =>
-      set((s) => ({
-        project: {
-          ...s.project,
-          tracks: s.project.tracks.map((t) => {
-            if (t.id !== trackId) {
-              return multi ? t : { ...t, notes: t.notes.map((n) => ({ ...n, selected: false })) };
-            }
-            return {
-              ...t,
-              notes: t.notes.map((n) => ({
-                ...n,
-                selected: n.id === noteId ? true : multi ? !!n.selected : false,
-              })),
-            };
+  updateNote: (trackId, noteId, partial) => {
+    const { totalTicks, snapTicks } = get();
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateTrackNotes(s.project.tracks, trackId, (notes) =>
+          notes.map((n) =>
+            n.id === noteId
+              ? applyNotePatch(n, partial, snapTicks(), totalTicks())
+              : n
+          )
+        ),
+      },
+    }));
+  },
+
+  setNotes: (trackId, notes) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => t.id === trackId ? { ...t, notes } : t),
+      },
+    })),
+
+  // ── notes (selection) ──────────────────────────────────────────
+  selectNote: (trackId, noteId, additive) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => {
+          if (t.id !== trackId) {
+            // non-additive: clear other tracks
+            return additive ? t : { ...t, notes: t.notes.map((n) => ({ ...n, selected: false })) };
+          }
+          return {
+            ...t,
+            notes: t.notes.map((n) => ({
+              ...n,
+              selected: n.id === noteId
+                ? true                            // always select clicked note
+                : additive ? !!n.selected : false, // additive keeps others; exclusive clears
+            })),
+          };
+        }),
+      },
+    })),
+
+  deselectAll: () =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateAllNotes(s.project.tracks, (n) => ({ ...n, selected: false })),
+      },
+    })),
+
+  clearSelection: () => get().deselectAll(),
+
+  selectNotesInRect: ({ startTick, endTick, minPitch, maxPitch }) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => {
+          if (t.id !== s.project.activeTrackId) return t;
+          return {
+            ...t,
+            notes: t.notes.map((n) => ({
+              ...n,
+              selected:
+                n.startTick >= startTick &&
+                n.startTick + n.durationTicks <= endTick &&
+                n.pitch     >= minPitch &&
+                n.pitch     <= maxPitch,
+            })),
+          };
+        }),
+      },
+    })),
+
+  deleteSelected: () =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => ({
+          ...t,
+          notes: t.notes.filter((n) => !n.selected),
+        })),
+      },
+    })),
+
+  moveSelectedNotes: (deltaPitch, deltaTicks) => {
+    const { totalTicks, snapTicks } = get();
+    const total = totalTicks();
+    const minDur = snapTicks();
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => ({
+          ...t,
+          notes: t.notes.map((n) => {
+            if (!n.selected) return n;
+            return applyNotePatch(
+              n,
+              { pitch: n.pitch + deltaPitch, startTick: n.startTick + deltaTicks },
+              minDur,
+              total,
+            );
           }),
-        },
-      })),
+        })),
+      },
+    }));
+  },
 
-    clearSelection: () =>
-      set((s) => ({
-        project: {
-          ...s.project,
-          tracks: s.project.tracks.map((t) => ({
+  resizeSelectedNotes: (deltaTicks) => {
+    const minDur = get().snapTicks();
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => ({
+          ...t,
+          notes: t.notes.map((n) => {
+            if (!n.selected) return n;
+            return { ...n, durationTicks: Math.max(minDur, n.durationTicks + deltaTicks) };
+          }),
+        })),
+      },
+    }));
+  },
+
+  duplicateSelectedNotes: () => {
+    const { project } = get();
+    const barTicks = ticksPerBar(project.settings.ppq, project.settings.timeSignature);
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => {
+          const selected = t.notes.filter((n) => n.selected);
+          if (selected.length === 0) return t;
+          const copies: Note[] = selected.map((n) => ({
+            ...n,
+            id: nanoid(),
+            startTick: n.startTick + barTicks,
+            selected: true,
+          }));
+          // deselect originals, add copies
+          return {
             ...t,
-            notes: t.notes.map((n) => ({ ...n, selected: false })),
-          })),
-        },
-      })),
+            notes: [
+              ...t.notes.map((n) => ({ ...n, selected: false })),
+              ...copies,
+            ],
+          };
+        }),
+      },
+    }));
+  },
 
-    deleteSelected: () =>
-      set((s) => ({
-        project: {
-          ...s.project,
-          tracks: s.project.tracks.map((t) => ({
-            ...t,
-            notes: t.notes.filter((n) => !n.selected),
-          })),
-        },
-      })),
+  setVelocityForSelectedNotes: (velocity) => {
+    const vel = Math.max(1, Math.min(127, velocity));
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateAllNotes(s.project.tracks, (n) =>
+          n.selected ? { ...n, velocity: vel } : n
+        ),
+      },
+    }));
+  },
 
-    setViewport: (partial) =>
-      set((s) => ({ viewport: { ...s.viewport, ...partial } })),
+  // ── transport ──────────────────────────────────────────────────
+  setPlayheadTick: (tick) => set({ playheadTick: tick }),
+  setIsPlaying:    (v)    => set({ isPlaying: v }),
+  setIsLooping:    (v)    => set({ isLooping: v }),
+  setIsMetronome:  (v)    => set({ isMetronome: v }),
 
-    setActiveTool: (tool) => set({ activeTool: tool }),
+  // ── viewport ───────────────────────────────────────────────────
+  setViewport: (partial) =>
+    set((s) => ({ viewport: { ...s.viewport, ...partial } })),
 
-    setPlayheadTick: (tick) => set({ playheadTick: tick }),
-    setIsPlaying: (v) => set({ isPlaying: v }),
-    setIsLooping: (v) => set({ isLooping: v }),
-    setIsMetronome: (v) => set({ isMetronome: v }),
+  // ── persistence ────────────────────────────────────────────────
+  saveProjectToLocalStorage: () => {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(get().project));
+    } catch (err) {
+      console.error('Save failed:', err);
+    }
+  },
 
-    exportJSON: () => {
-      const { project } = get();
-      return JSON.stringify(project, null, 2);
-    },
+  loadProjectFromLocalStorage: () => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return false;
+      const project = JSON.parse(raw) as Project;
+      set({ project });
+      return true;
+    } catch {
+      return false;
+    }
+  },
 
-    importJSON: (json) => {
-      try {
-        const project = JSON.parse(json) as Project;
-        set({ project });
-      } catch {
-        console.error('Invalid project JSON');
-      }
-    },
+  exportJSON: () => JSON.stringify(get().project, null, 2),
+  exportProjectJson: () => get().exportJSON(),
 
-    snapTickValue: (tick) => {
-      const { settings } = get().project;
-      const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
-      return snapTick(tick, snapTicks);
-    },
-
-    totalTicks: () => {
-      const { settings } = get().project;
-      return ticksPerBar(settings.ppq, settings.timeSignature) * settings.bars;
-    },
-  };
-});
-
-// Convenience: nanoid shim (Vite already includes it via zustand deps, but be explicit)
-function nanoid(): string {
-  return Math.random().toString(36).slice(2, 11) + Date.now().toString(36);
-}
+  importJSON: (json) => {
+    try {
+      const project = JSON.parse(json) as Project;
+      set({ project });
+    } catch {
+      console.error('Invalid project JSON');
+    }
+  },
+  importProjectJson: (json) => get().importJSON(json),
+}));
