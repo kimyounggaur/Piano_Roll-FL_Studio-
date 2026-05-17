@@ -37,6 +37,11 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   const { settings } = project;
   const vp = viewport;
 
+  // Keep viewport dimensions in sync so getVisiblePitchRange / getVisibleTickRange work
+  useEffect(() => {
+    setViewport({ width, height });
+  }, [width, height, setViewport]);
+
   // ── Grid drawing ───────────────────────────────────────────────────
   const draw = useCallback(() => {
     const canvas = canvasRef.current;

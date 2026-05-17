@@ -82,8 +82,18 @@ export function createDefaultProject(): Project {
 const DEFAULT_VIEWPORT: PianoRollViewport = {
   scrollX: 0,
   scrollY: 0,
-  pixelsPerTick: 0.25,
-  keyHeight: 14,
+  zoomX: 1.0,
+  zoomY: 1.0,
+  rowHeight: 18,
+  beatWidth: 96,
+  minPitch: 0,
+  maxPitch: 127,
+  width: 0,
+  height: 0,
+  // derived — beatWidth * zoomX / DEFAULT_PPQ = 96 / 480 = 0.2
+  pixelsPerTick: 96 / DEFAULT_PPQ,
+  // derived — rowHeight * zoomY = 18
+  keyHeight: 18,
 };
 
 const LS_KEY = 'rolllab_project';
@@ -551,7 +561,25 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   // ── viewport ───────────────────────────────────────────────────
   setViewport: (partial) =>
-    set((s) => ({ viewport: { ...s.viewport, ...partial } })),
+    set((s) => {
+      const merged = { ...s.viewport, ...partial };
+      const ppq = s.project.settings.ppq;
+      // Keep legacy derived fields in sync when zoom or layout fields change
+      if ('zoomX' in partial || 'beatWidth' in partial) {
+        merged.pixelsPerTick = merged.beatWidth * merged.zoomX / ppq;
+      }
+      if ('zoomY' in partial || 'rowHeight' in partial) {
+        merged.keyHeight = merged.rowHeight * merged.zoomY;
+      }
+      // If caller sets pixelsPerTick directly (wheel zoom), back-compute zoomX
+      if ('pixelsPerTick' in partial && !('zoomX' in partial)) {
+        merged.zoomX = partial.pixelsPerTick! * ppq / merged.beatWidth;
+      }
+      if ('keyHeight' in partial && !('zoomY' in partial)) {
+        merged.zoomY = partial.keyHeight! / merged.rowHeight;
+      }
+      return { viewport: merged };
+    }),
 
   // ── persistence ────────────────────────────────────────────────
   saveProjectToLocalStorage: () => {

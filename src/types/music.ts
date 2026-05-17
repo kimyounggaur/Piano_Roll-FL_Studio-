@@ -190,12 +190,34 @@ export interface PianoRollViewport {
   scrollX: number;
   /** Vertical pixel offset (how far the user has scrolled down). */
   scrollY: number;
+
+  // ── Zoom / layout ──────────────────────────────────────────────────
+  /** Horizontal zoom multiplier applied on top of beatWidth. Default 1.0. */
+  zoomX: number;
+  /** Vertical zoom multiplier applied on top of rowHeight. Default 1.0. */
+  zoomY: number;
+  /** Pixel height of one semitone row at zoomY = 1. Default 18 px. */
+  rowHeight: number;
+  /** Pixel width of one quarter-note at zoomX = 1. Default 96 px. */
+  beatWidth: number;
+
+  // ── Pitch bounds ────────────────────────────────────────────────────
+  /** Lowest MIDI pitch rendered (default 0). */
+  minPitch: number;
+  /** Highest MIDI pitch rendered (default 127). */
+  maxPitch: number;
+
+  // ── Canvas dimensions (set by the host component on resize) ─────────
+  width: number;
+  height: number;
+
+  // ── Legacy derived fields (kept for backward-compat with canvas code) ─
   /**
-   * Pixels per tick — the horizontal zoom level.
-   * At ppq=480 and pixelsPerTick=0.25 → one quarter-note = 120 px.
+   * Pixels per tick at the current zoom.
+   * Equals beatWidth * zoomX / ppq — kept in sync by the store.
    */
   pixelsPerTick: number;
-  /** Pixel height of one semitone row — the vertical zoom level. */
+  /** Pixel height of one semitone row at the current zoom. Equals rowHeight * zoomY. */
   keyHeight: number;
 }
 
