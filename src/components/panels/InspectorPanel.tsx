@@ -34,35 +34,35 @@ export const InspectorPanel: React.FC = () => {
 
   return (
     <div className="inspector-panel">
-      <div className="inspector-header">INSPECTOR</div>
+      <div className="inspector-header">검사기</div>
 
       <div className="inspector-section">
-        <div className="inspector-label">Project</div>
+        <div className="inspector-label">프로젝트</div>
         <div className="inspector-value">{project.name}</div>
       </div>
 
       <div className="inspector-section">
-        <div className="inspector-label">Active Track</div>
+        <div className="inspector-label">활성 트랙</div>
         <div className="inspector-value">{activeTrack?.name ?? '—'}</div>
       </div>
 
       <div className="inspector-section">
-        <div className="inspector-label">Notes</div>
+        <div className="inspector-label">노트</div>
         <div className="inspector-value">{activeTrack?.notes.length ?? 0}</div>
       </div>
 
       {selectedNotes.length > 0 && (
         <div className="inspector-section">
-          <div className="inspector-label">Selected</div>
-          <div className="inspector-value">{selectedNotes.length} note{selectedNotes.length > 1 ? 's' : ''}</div>
+          <div className="inspector-label">선택됨</div>
+          <div className="inspector-value">노트 {selectedNotes.length}개</div>
         </div>
       )}
 
       <div className="inspector-divider" />
 
       <div className="inspector-section column">
-        <button className="inspector-btn" onClick={handleExport}>Save JSON</button>
-        <button className="inspector-btn" onClick={handleImport}>Load JSON</button>
+        <button className="inspector-btn" onClick={handleExport}>JSON 저장</button>
+        <button className="inspector-btn" onClick={handleImport}>JSON 불러오기</button>
       </div>
     </div>
   );

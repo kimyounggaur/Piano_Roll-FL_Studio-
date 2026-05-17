@@ -53,26 +53,26 @@ export const TransportBar: React.FC = () => {
         <button
           className={`transport-btn${isPlaying ? ' active' : ''}`}
           onClick={handlePlay}
-          title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+          title={isPlaying ? '일시정지 (스페이스)' : '재생 (스페이스)'}
         >
           {isPlaying ? '⏸' : '▶'}
         </button>
-        <button className="transport-btn" onClick={handleStop} title="Stop">
-          ⏹
+        <button className="transport-btn" onClick={handleStop} title="정지">
+          ■
         </button>
         <button
           className={`transport-btn${isLooping ? ' active' : ''}`}
           onClick={() => setIsLooping(!isLooping)}
-          title="Loop"
+          title="반복"
         >
-          🔁
+          ⟲
         </button>
         <button
           className={`transport-btn${isMetronome ? ' active' : ''}`}
           onClick={() => setIsMetronome(!isMetronome)}
-          title="Metronome"
+          title="메트로놈"
         >
-          🥁
+          ♪
         </button>
       </div>
 
@@ -85,7 +85,7 @@ export const TransportBar: React.FC = () => {
       <div className="transport-divider" />
 
       <div className="transport-section">
-        <label className="transport-label">BPM</label>
+        <label className="transport-label">템포</label>
         <input
           type="number"
           className="transport-input bpm-input"
@@ -96,7 +96,7 @@ export const TransportBar: React.FC = () => {
       </div>
 
       <div className="transport-section">
-        <label className="transport-label">TIME</label>
+        <label className="transport-label">박자</label>
         <input
           type="number"
           className="transport-input ts-input"
@@ -119,7 +119,7 @@ export const TransportBar: React.FC = () => {
       </div>
 
       <div className="transport-section">
-        <label className="transport-label">BARS</label>
+        <label className="transport-label">마디</label>
         <input
           type="number"
           className="transport-input"
@@ -130,7 +130,7 @@ export const TransportBar: React.FC = () => {
       </div>
 
       <div className="transport-section">
-        <label className="transport-label">SNAP</label>
+        <label className="transport-label">스냅</label>
         <select
           className="transport-input"
           value={settings.snapUnit}

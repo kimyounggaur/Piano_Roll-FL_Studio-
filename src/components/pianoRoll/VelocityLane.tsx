@@ -73,7 +73,7 @@ export const VelocityLane: React.FC<Props> = ({ width, height }) => {
     // Label — Wise weight-900 style
     ctx.fillStyle = 'rgba(159,232,112,0.35)';
     ctx.font = 'bold 9px sans-serif';
-    ctx.fillText('VELOCITY', 5, 12);
+    ctx.fillText('세기', 5, 12);
   }, [width, height, vp, project]);
 
   useEffect(() => { draw(); });

@@ -4,27 +4,27 @@ import type { PianoRollTool, ScaleType } from '../../types/music';
 import './ToolBar.css';
 
 const TOOLS: { id: PianoRollTool; label: string; icon: string; title: string }[] = [
-  { id: 'draw',   label: 'Draw',   icon: '✏️', title: 'Draw notes (D)' },
-  { id: 'paint',  label: 'Paint',  icon: '🖌',  title: 'Paint stream (P)' },
-  { id: 'select', label: 'Select', icon: '▣',  title: 'Select notes (S)' },
-  { id: 'erase',  label: 'Erase',  icon: '⌫',  title: 'Erase notes (E)' },
-  { id: 'slice',  label: 'Slice',  icon: '✂',  title: 'Slice note (X)' },
-  { id: 'stamp',  label: 'Stamp',  icon: '♪',  title: 'Chord stamp (C)' },
+  { id: 'draw',   label: '그리기', icon: '✏️', title: '노트 그리기 (D)' },
+  { id: 'paint',  label: '페인트', icon: '🖌',  title: '연속 노트 그리기 (P)' },
+  { id: 'select', label: '선택',   icon: '▣',  title: '노트 선택 (S)' },
+  { id: 'erase',  label: '지우기', icon: '⌫',  title: '노트 지우기 (E)' },
+  { id: 'slice',  label: '자르기', icon: '✂',  title: '노트 자르기 (X)' },
+  { id: 'stamp',  label: '스탬프', icon: '♪',  title: '코드 스탬프 (C)' },
 ];
 
 const SCALE_OPTIONS: { value: ScaleType; label: string }[] = [
-  { value: 'none',            label: 'No Scale' },
-  { value: 'major',           label: 'Major' },
-  { value: 'minor',           label: 'Minor' },
-  { value: 'dorian',          label: 'Dorian' },
-  { value: 'phrygian',        label: 'Phrygian' },
-  { value: 'lydian',          label: 'Lydian' },
-  { value: 'mixolydian',      label: 'Mixolydian' },
-  { value: 'locrian',         label: 'Locrian' },
-  { value: 'harmonicMinor',   label: 'Harm. Minor' },
-  { value: 'pentatonicMajor', label: 'Penta Major' },
-  { value: 'pentatonicMinor', label: 'Penta Minor' },
-  { value: 'blues',           label: 'Blues' },
+  { value: 'none',            label: '스케일 없음' },
+  { value: 'major',           label: '메이저' },
+  { value: 'minor',           label: '마이너' },
+  { value: 'dorian',          label: '도리안' },
+  { value: 'phrygian',        label: '프리지안' },
+  { value: 'lydian',          label: '리디안' },
+  { value: 'mixolydian',      label: '믹솔리디안' },
+  { value: 'locrian',         label: '로크리안' },
+  { value: 'harmonicMinor',   label: '하모닉 마이너' },
+  { value: 'pentatonicMajor', label: '메이저 펜타토닉' },
+  { value: 'pentatonicMinor', label: '마이너 펜타토닉' },
+  { value: 'blues',           label: '블루스' },
 ];
 
 export const ToolBar: React.FC = () => {
@@ -50,7 +50,7 @@ export const ToolBar: React.FC = () => {
       <div className="toolbar-divider" />
 
       <div className="toolbar-group">
-        <span className="toolbar-label">Scale</span>
+        <span className="toolbar-label">스케일</span>
         <select
           value={settings.scaleName}
           onChange={(e) => updateSettings({ scaleName: e.target.value as ScaleType })}

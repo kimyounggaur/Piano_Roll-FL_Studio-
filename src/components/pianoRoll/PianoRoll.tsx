@@ -55,7 +55,7 @@ export const PianoRoll: React.FC = () => {
         </div>
         <div className="velocity-lane-wrapper">
           <div style={{ width: KEYBOARD_WIDTH, flexShrink: 0, background: '#0e0e1c', borderRight: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: 9, color: 'var(--text-muted)', writingMode: 'vertical-rl', letterSpacing: '0.1em' }}>VEL</span>
+            <span style={{ fontSize: 9, color: 'var(--text-muted)', writingMode: 'vertical-rl', letterSpacing: '0.1em' }}>세기</span>
           </div>
           <VelocityLane width={canvasWidth} height={VELOCITY_HEIGHT} />
         </div>

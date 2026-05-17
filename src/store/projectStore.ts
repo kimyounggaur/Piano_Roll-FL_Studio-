@@ -60,9 +60,9 @@ function makeTrack(name: string, colorIndex: number): Track {
 //    Track 1 — empty, colour #4a9eff
 // ═══════════════════════════════════════════════════════════════════
 export function createDefaultProject(): Project {
-  const track = makeTrack('Track 1', 0);
+  const track = makeTrack('트랙 1', 0);
   return {
-    name: 'New Project',
+    name: '새 프로젝트',
     settings: {
       bpm: DEFAULT_BPM,
       ppq: DEFAULT_PPQ,
@@ -306,7 +306,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   // ── tracks ─────────────────────────────────────────────────────
   addTrack: () =>
     set((s) => {
-      const track = makeTrack(`Track ${s.project.tracks.length + 1}`, s.project.tracks.length);
+      const track = makeTrack(`트랙 ${s.project.tracks.length + 1}`, s.project.tracks.length);
       return {
         project: {
           ...s.project,

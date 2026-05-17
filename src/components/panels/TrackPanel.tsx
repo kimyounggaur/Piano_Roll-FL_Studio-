@@ -12,8 +12,8 @@ export const TrackPanel: React.FC = () => {
   return (
     <div className="track-panel">
       <div className="track-panel-header">
-        <span className="track-panel-title">Tracks</span>
-        <button className="track-add-btn" onClick={addTrack} title="Add track">+</button>
+        <span className="track-panel-title">트랙</span>
+        <button className="track-add-btn" onClick={addTrack} title="트랙 추가">+</button>
       </div>
       <div className="track-list">
         {tracks.map((track) => (
@@ -27,18 +27,18 @@ export const TrackPanel: React.FC = () => {
             <div className="track-actions">
               <button
                 className={`track-btn${track.muted ? ' dim' : ''}`}
-                title="Mute"
+                title="음소거"
                 onClick={(e) => { e.stopPropagation(); toggleTrackMute(track.id); }}
               >M</button>
               <button
                 className={`track-btn${track.solo ? ' solo' : ''}`}
-                title="Solo"
+                title="솔로"
                 onClick={(e) => { e.stopPropagation(); toggleTrackSolo(track.id); }}
               >S</button>
               {tracks.length > 1 && (
                 <button
                   className="track-btn danger"
-                  title="Delete"
+                  title="삭제"
                   onClick={(e) => { e.stopPropagation(); removeTrack(track.id); }}
                 >×</button>
               )}
