@@ -4,7 +4,7 @@ import {
   startPlayback,
   stopPlayback,
 } from '../../audio/toneEngine';
-import { ticksPerBar } from '../../utils/time';
+import { formatTickAsBarBeat } from '../../utils/time';
 import type { SnapUnit } from '../../types/music';
 import './TransportBar.css';
 
@@ -45,12 +45,7 @@ export const TransportBar: React.FC = () => {
     setPlayheadTick(0);
   }, [setIsPlaying, setPlayheadTick]);
 
-  const barPos = (() => {
-    const tpb = ticksPerBar(settings.ppq, settings.timeSignature);
-    const bar = Math.floor(playheadTick / tpb) + 1;
-    const beat = Math.floor((playheadTick % tpb) / (settings.ppq * 4 / settings.timeSignature.denominator)) + 1;
-    return `${bar}:${beat}`;
-  })();
+  const barPos = formatTickAsBarBeat(playheadTick, settings.timeSignature, settings.ppq);
 
   return (
     <div className="transport-bar">
