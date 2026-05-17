@@ -1,4 +1,4 @@
-import { NOTE_NAMES, SCALES, type NoteName } from '../types/music';
+import { NOTE_NAMES, SCALES, type NoteName, type ScaleType } from '../types/music';
 
 export function midiToNoteName(pitch: number): string {
   const octave = Math.floor(pitch / 12) - 1;
@@ -12,8 +12,8 @@ export function isBlackKey(pitch: number): boolean {
 
 export function isInScale(pitch: number, root: number, scaleName: string): boolean {
   if (scaleName === 'none') return true;
-  const intervals = SCALES[scaleName];
-  if (!intervals) return true;
+  const intervals = SCALES[scaleName as ScaleType];
+  if (!intervals || intervals.length === 0) return true;
   const pc = ((pitch - root) % 12 + 12) % 12;
   return intervals.includes(pc);
 }

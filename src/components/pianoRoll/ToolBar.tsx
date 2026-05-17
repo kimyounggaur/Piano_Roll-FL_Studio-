@@ -1,12 +1,30 @@
 import React from 'react';
 import { useProjectStore } from '../../store/projectStore';
-import type { EditTool } from '../../types/music';
+import type { PianoRollTool, ScaleType } from '../../types/music';
 import './ToolBar.css';
 
-const TOOLS: { id: EditTool; label: string; icon: string; title: string }[] = [
+const TOOLS: { id: PianoRollTool; label: string; icon: string; title: string }[] = [
   { id: 'draw',   label: 'Draw',   icon: '✏️', title: 'Draw notes (D)' },
+  { id: 'paint',  label: 'Paint',  icon: '🖌',  title: 'Paint stream (P)' },
   { id: 'select', label: 'Select', icon: '▣',  title: 'Select notes (S)' },
   { id: 'erase',  label: 'Erase',  icon: '⌫',  title: 'Erase notes (E)' },
+  { id: 'slice',  label: 'Slice',  icon: '✂',  title: 'Slice note (X)' },
+  { id: 'stamp',  label: 'Stamp',  icon: '♪',  title: 'Chord stamp (C)' },
+];
+
+const SCALE_OPTIONS: { value: ScaleType; label: string }[] = [
+  { value: 'none',            label: 'No Scale' },
+  { value: 'major',           label: 'Major' },
+  { value: 'minor',           label: 'Minor' },
+  { value: 'dorian',          label: 'Dorian' },
+  { value: 'phrygian',        label: 'Phrygian' },
+  { value: 'lydian',          label: 'Lydian' },
+  { value: 'mixolydian',      label: 'Mixolydian' },
+  { value: 'locrian',         label: 'Locrian' },
+  { value: 'harmonicMinor',   label: 'Harm. Minor' },
+  { value: 'pentatonicMajor', label: 'Penta Major' },
+  { value: 'pentatonicMinor', label: 'Penta Minor' },
+  { value: 'blues',           label: 'Blues' },
 ];
 
 export const ToolBar: React.FC = () => {
@@ -35,12 +53,12 @@ export const ToolBar: React.FC = () => {
         <span className="toolbar-label">Scale</span>
         <select
           value={settings.scaleName}
-          onChange={(e) => updateSettings({ scaleName: e.target.value })}
+          onChange={(e) => updateSettings({ scaleName: e.target.value as ScaleType })}
           className="toolbar-select"
         >
-          {['none','major','minor','dorian','phrygian','lydian','mixolydian','pentatonic','blues'].map(
-            (s) => <option key={s} value={s}>{s === 'none' ? 'No Scale' : s.charAt(0).toUpperCase() + s.slice(1)}</option>
-          )}
+          {SCALE_OPTIONS.map(({ value, label }) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
         </select>
         <select
           value={settings.scaleRoot}

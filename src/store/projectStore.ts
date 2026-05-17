@@ -8,9 +8,11 @@ import { ticksPerBar, snapUnitToTicks, snapTick } from '../utils/time';
 // ── Defaults ──────────────────────────────────────────────────────────
 const DEFAULT_SETTINGS: ProjectSettings = {
   bpm: 120,
+  ppq: 480,
   timeSignature: { numerator: 4, denominator: 4 },
   bars: 8,
-  ppq: 480,
+  loopStartTick: 0,
+  loopEndTick: 0,
   snapUnit: '1/16',
   scaleRoot: 0,
   scaleName: 'none',
@@ -24,7 +26,18 @@ const DEFAULT_VIEWPORT: Viewport = {
 };
 
 function makeTrack(name: string, color: string): Track {
-  return { id: nanoid(), name, color, muted: false, solo: false, notes: [] };
+  return {
+    id: nanoid(),
+    name,
+    color,
+    instrument: { type: 'synth', preset: 'triangle' },
+    channel: 1,
+    muted: false,
+    solo: false,
+    volume: 1.0,
+    pan: 0,
+    notes: [],
+  };
 }
 
 // ── Store shape ───────────────────────────────────────────────────────

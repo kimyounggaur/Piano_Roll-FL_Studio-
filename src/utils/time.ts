@@ -19,6 +19,7 @@ export function snapUnitToTicks(unit: SnapUnit, ppq: number): number {
     '1/8':  ppq / 2,
     '1/16': ppq / 4,
     '1/32': ppq / 8,
+    '1/64': ppq / 16,
   };
   return Math.round((map[base] ?? ppq) * tripletFactor);
 }
