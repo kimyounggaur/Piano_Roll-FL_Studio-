@@ -1,0 +1,53 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--toolbar-height);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  margin: 0 8px;
+}
+
+.tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  transition: background 0.12s, color 0.12s;
+}
+.tool-btn:hover { color: var(--text-primary); background: var(--accent-dim); }
+.tool-btn.active { background: var(--accent); color: #fff; }
+
+.tool-icon { font-size: 14px; line-height: 1; }
+.tool-label { font-size: 12px; font-weight: 500; }
+
+.toolbar-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.toolbar-select {
+  font-size: 12px;
+  padding: 3px 6px;
+  height: 26px;
+}

@@ -1,0 +1,393 @@
+import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { useProjectStore } from '../../store/projectStore';
+import { tickToX, xToTick, pitchToY, yToPitch, clamp } from '../../utils/geometry';
+import { snapUnitToTicks } from '../../utils/time';
+import { isBlackKey, isInScale, snapPitchToScale } from '../../utils/musicTheory';
+import type { Note } from '../../types/music';
+
+const TOTAL_KEYS = 128;
+const RESIZE_HANDLE_PX = 8;
+
+interface DragState {
+  type: 'none' | 'draw' | 'move' | 'resize' | 'select-box';
+  noteId?: string;
+  trackId?: string;
+  startX: number;
+  startY: number;
+  origStartTick?: number;
+  origPitch?: number;
+  origDuration?: number;
+  boxX2?: number;
+  boxY2?: number;
+}
+
+interface Props {
+  width: number;
+  height: number;
+}
+
+export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drag = useRef<DragState>({ type: 'none', startX: 0, startY: 0 });
+  const {
+    project, viewport, activeTool,
+    addNote, removeNote, updateNote, selectNote, clearSelection,
+    setViewport, snapTickValue, totalTicks,
+  } = useProjectStore();
+  const { settings } = project;
+  const vp = viewport;
+
+  // ── Grid drawing ───────────────────────────────────────────────────
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = width  * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width  = `${width}px`;
+    canvas.style.height = `${height}px`;
+    ctx.scale(dpr, dpr);
+
+    // Background
+    ctx.fillStyle = '#12121e';
+    ctx.fillRect(0, 0, width, height);
+
+    const { ppq, timeSignature: ts, bars, scaleRoot, scaleName } = settings;
+    const ticksPerBeat = ppq * (4 / ts.denominator);
+    const ticksPerBar  = ticksPerBeat * ts.numerator;
+    const snapTicks    = snapUnitToTicks(settings.snapUnit, ppq);
+
+    // Horizontal key lanes
+    const firstKey = Math.floor(vp.scrollY / vp.keyHeight);
+    const lastKey  = Math.min(TOTAL_KEYS - 1, Math.ceil((vp.scrollY + height) / vp.keyHeight));
+    for (let i = firstKey; i <= lastKey; i++) {
+      const pitch = TOTAL_KEYS - 1 - i;
+      const y = i * vp.keyHeight - vp.scrollY;
+      if (isBlackKey(pitch)) {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(0, y, width, vp.keyHeight);
+      }
+      if (pitch % 12 === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.04)';
+        ctx.fillRect(0, y, width, 1);
+      }
+      if (scaleName !== 'none' && !isInScale(pitch, scaleRoot, scaleName)) {
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillRect(0, y, width, vp.keyHeight);
+      }
+    }
+
+    // Vertical time grid
+    const startTick = Math.floor(vp.scrollX / vp.pixelsPerTick / snapTicks) * snapTicks;
+    const endTick   = Math.ceil((vp.scrollX + width) / vp.pixelsPerTick);
+    for (let t = startTick; t <= Math.min(endTick, totalTicks()); t += snapTicks) {
+      const x = tickToX(t, vp);
+      if (x < 0 || x > width) continue;
+      const isBar  = t % ticksPerBar  === 0;
+      const isBeat = t % ticksPerBeat === 0;
+      ctx.strokeStyle = isBar ? 'rgba(255,255,255,0.22)' : isBeat ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)';
+      ctx.lineWidth = isBar ? 1.5 : 1;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+    }
+
+    // Bar numbers
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '10px sans-serif';
+    for (let b = 0; b <= bars; b++) {
+      const t = b * ticksPerBar;
+      const x = tickToX(t, vp);
+      if (x >= 0 && x < width) ctx.fillText(String(b + 1), x + 3, 12);
+    }
+
+    // Ghost notes from inactive tracks
+    const soloActive = project.tracks.some((tr) => tr.solo);
+    for (const track of project.tracks) {
+      if (track.id === project.activeTrackId) continue;
+      const hidden = track.muted || (soloActive && !track.solo);
+      if (hidden) continue;
+      ctx.globalAlpha = 0.25;
+      for (const note of track.notes) {
+        const x = tickToX(note.startTick, vp);
+        const w = note.durationTicks * vp.pixelsPerTick;
+        const y = pitchToY(note.pitch, vp);
+        if (x + w < 0 || x > width) continue;
+        ctx.fillStyle = track.color;
+        ctx.fillRect(x, y + 1, Math.max(2, w - 1), vp.keyHeight - 2);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Active track notes
+    const activeTrack = project.tracks.find((t) => t.id === project.activeTrackId);
+    if (activeTrack) {
+      for (const note of activeTrack.notes) {
+        const x = tickToX(note.startTick, vp);
+        const w = note.durationTicks * vp.pixelsPerTick;
+        const y = pitchToY(note.pitch, vp);
+        if (x + w < 0 || x > width) continue;
+        const nw = Math.max(3, w - 1);
+        ctx.fillStyle = note.selected ? '#ffd93d' : activeTrack.color;
+        ctx.fillRect(x, y + 1, nw, vp.keyHeight - 2);
+        // Lighter top edge
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillRect(x, y + 1, nw, 2);
+        // Resize handle visual
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(x + nw - 3, y + 2, 3, vp.keyHeight - 4);
+      }
+    }
+
+    // Playhead
+    const { playheadTick } = useProjectStore.getState();
+    const px = tickToX(playheadTick, vp);
+    if (px >= 0 && px < width) {
+      ctx.strokeStyle = '#ff6b6b';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, height); ctx.stroke();
+    }
+
+    // Selection box
+    const d = drag.current;
+    if (d.type === 'select-box' && d.boxX2 !== undefined && d.boxY2 !== undefined) {
+      const bx = Math.min(d.startX, d.boxX2);
+      const by = Math.min(d.startY, d.boxY2);
+      const bw = Math.abs(d.boxX2 - d.startX);
+      const bh = Math.abs(d.boxY2 - d.startY);
+      ctx.strokeStyle = '#ffd93d';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.fillStyle = 'rgba(255,217,61,0.08)';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.setLineDash([]);
+    }
+  }, [width, height, vp, project, settings, totalTicks]);
+
+  useEffect(() => { draw(); });
+
+  // ── Hit testing ────────────────────────────────────────────────────
+  const hitTest = useCallback(
+    (cx: number, cy: number): { note: Note; trackId: string; isResize: boolean } | null => {
+      const activeTrack = project.tracks.find((t) => t.id === project.activeTrackId);
+      if (!activeTrack) return null;
+      // Reverse so top-drawn note hits first
+      for (let i = activeTrack.notes.length - 1; i >= 0; i--) {
+        const note = activeTrack.notes[i];
+        const nx = tickToX(note.startTick, vp);
+        const nw = Math.max(3, note.durationTicks * vp.pixelsPerTick - 1);
+        const ny = pitchToY(note.pitch, vp);
+        const nh = vp.keyHeight - 2;
+        if (cx >= nx && cx <= nx + nw && cy >= ny + 1 && cy <= ny + nh) {
+          const isResize = cx >= nx + nw - RESIZE_HANDLE_PX;
+          return { note, trackId: activeTrack.id, isResize };
+        }
+      }
+      return null;
+    },
+    [project, vp]
+  );
+
+  // ── Mouse handlers ─────────────────────────────────────────────────
+  const getCursorPos = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const rect = canvasRef.current!.getBoundingClientRect();
+      return { cx: e.clientX - rect.left, cy: e.clientY - rect.top };
+    },
+    []
+  );
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const { cx, cy } = getCursorPos(e);
+      const hit = hitTest(cx, cy);
+      const rawTick = xToTick(cx, vp);
+      const snappedTick = snapTickValue(rawTick);
+      const pitch = yToPitch(cy, vp);
+      const activeTrackId = project.activeTrackId ?? '';
+
+      if (activeTool === 'erase') {
+        if (hit) removeNote(hit.trackId, hit.note.id);
+        return;
+      }
+
+      if (activeTool === 'select') {
+        if (hit) {
+          selectNote(hit.trackId, hit.note.id, e.shiftKey);
+          drag.current = {
+            type: 'move',
+            noteId: hit.note.id,
+            trackId: hit.trackId,
+            startX: cx, startY: cy,
+            origStartTick: hit.note.startTick,
+            origPitch: hit.note.pitch,
+            origDuration: hit.note.durationTicks,
+          };
+        } else {
+          if (!e.shiftKey) clearSelection();
+          drag.current = { type: 'select-box', startX: cx, startY: cy, boxX2: cx, boxY2: cy };
+        }
+        return;
+      }
+
+      // draw tool
+      if (hit) {
+        if (hit.isResize) {
+          drag.current = {
+            type: 'resize',
+            noteId: hit.note.id,
+            trackId: hit.trackId,
+            startX: cx, startY: cy,
+            origStartTick: hit.note.startTick,
+            origDuration: hit.note.durationTicks,
+          };
+        } else {
+          // clicking existing note → start move
+          drag.current = {
+            type: 'move',
+            noteId: hit.note.id,
+            trackId: hit.trackId,
+            startX: cx, startY: cy,
+            origStartTick: hit.note.startTick,
+            origPitch: hit.note.pitch,
+            origDuration: hit.note.durationTicks,
+          };
+        }
+      } else {
+        // new note
+        const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
+        const finalPitch = settings.scaleName !== 'none'
+          ? snapPitchToScale(pitch, settings.scaleRoot, settings.scaleName)
+          : clamp(pitch, 0, 127);
+        if (activeTrackId && snappedTick >= 0 && snappedTick < totalTicks() && finalPitch >= 0) {
+          addNote(activeTrackId, {
+            pitch: finalPitch,
+            startTick: snappedTick,
+            durationTicks: snapTicks,
+            velocity: 100,
+          });
+        }
+        drag.current = { type: 'draw', startX: cx, startY: cy };
+      }
+    },
+    [activeTool, vp, hitTest, snapTickValue, project, settings, totalTicks, addNote, removeNote, selectNote, clearSelection, getCursorPos]
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const { cx, cy } = getCursorPos(e);
+      const d = drag.current;
+      if (d.type === 'none') return;
+
+      if (d.type === 'select-box') {
+        drag.current = { ...d, boxX2: cx, boxY2: cy };
+        return;
+      }
+
+      if ((d.type === 'move' || d.type === 'resize') && d.noteId && d.trackId) {
+        const dx = cx - d.startX;
+        const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
+        const deltaTick = snapTickValue(d.origStartTick! + dx / vp.pixelsPerTick) - d.origStartTick!;
+
+        if (d.type === 'move') {
+          const dy = cy - d.startY;
+          const deltaPitch = -Math.round(dy / vp.keyHeight);
+          const newTick  = clamp(d.origStartTick! + deltaTick, 0, totalTicks() - snapTicks);
+          const newPitch = clamp(d.origPitch! + deltaPitch, 0, 127);
+          updateNote(d.trackId, d.noteId, { startTick: newTick, pitch: newPitch });
+        } else {
+          const rawEndTick = d.origStartTick! + d.origDuration! + (dx / vp.pixelsPerTick);
+          const snappedEnd = snapTickValue(rawEndTick);
+          const newDur = Math.max(snapTicks, snappedEnd - d.origStartTick!);
+          updateNote(d.trackId, d.noteId, { durationTicks: newDur });
+        }
+      }
+    },
+    [vp, settings, snapTickValue, totalTicks, updateNote, getCursorPos]
+  );
+
+  const handleMouseUp = useCallback(
+    () => {
+      const d = drag.current;
+      if (d.type === 'select-box' && d.boxX2 !== undefined && d.boxY2 !== undefined) {
+        const x1 = Math.min(d.startX, d.boxX2);
+        const x2 = Math.max(d.startX, d.boxX2);
+        const y1 = Math.min(d.startY, d.boxY2);
+        const y2 = Math.max(d.startY, d.boxY2);
+        const t1 = xToTick(x1, vp);
+        const t2 = xToTick(x2, vp);
+        const p1 = yToPitch(y1, vp);
+        const p2 = yToPitch(y2, vp);
+        const pMin = Math.min(p1, p2);
+        const pMax = Math.max(p1, p2);
+        const activeTrack = project.tracks.find((t) => t.id === project.activeTrackId);
+        if (activeTrack) {
+          activeTrack.notes.forEach((n) => {
+            if (n.startTick >= t1 && n.startTick <= t2 && n.pitch >= pMin && n.pitch <= pMax) {
+              selectNote(activeTrack.id, n.id, true);
+            }
+          });
+        }
+      }
+      drag.current = { type: 'none', startX: 0, startY: 0 };
+    },
+    [vp, project, selectNote]
+  );
+
+  // Scroll with mouse wheel
+  const handleWheel = useCallback(
+    (e: React.WheelEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      if (e.ctrlKey) {
+        // Zoom horizontal
+        const factor = e.deltaY > 0 ? 0.85 : 1.18;
+        const newPPT = clamp(vp.pixelsPerTick * factor, 0.05, 2);
+        setViewport({ pixelsPerTick: newPPT });
+      } else if (e.shiftKey) {
+        // Horizontal scroll
+        setViewport({ scrollX: Math.max(0, vp.scrollX + e.deltaY) });
+      } else {
+        // Vertical scroll
+        const maxScrollY = Math.max(0, TOTAL_KEYS * vp.keyHeight - height);
+        setViewport({ scrollY: clamp(vp.scrollY + e.deltaY, 0, maxScrollY) });
+      }
+    },
+    [vp, height, setViewport]
+  );
+
+  const getCursor = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (activeTool === 'erase') return 'crosshair';
+      if (activeTool === 'select') return 'default';
+      const { cx, cy } = getCursorPos(e);
+      const hit = hitTest(cx, cy);
+      if (hit?.isResize) return 'ew-resize';
+      if (hit) return 'grab';
+      return 'crosshair';
+    },
+    [activeTool, hitTest, getCursorPos]
+  );
+
+  const [cursor, setCursor] = useState('crosshair');
+  const handleMouseMoveCursor = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      setCursor(getCursor(e));
+      handleMouseMove(e);
+    },
+    [getCursor, handleMouseMove]
+  );
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ cursor, display: 'block' }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMoveCursor}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onWheel={handleWheel}
+    />
+  );
+};

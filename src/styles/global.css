@@ -1,0 +1,65 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-primary:    #1a1a2e;
+  --bg-secondary:  #16213e;
+  --bg-surface:    #0f3460;
+  --bg-canvas:     #12121e;
+  --accent:        #4a9eff;
+  --accent-dim:    #2d6bbf;
+  --text-primary:  #e8e8f0;
+  --text-muted:    #7f8fa6;
+  --border:        #2a2a4a;
+  --note-default:  #4a9eff;
+  --note-selected: #ffd93d;
+  --black-key:     #111122;
+  --white-key:     #dde4f0;
+  --grid-line:     rgba(255,255,255,0.06);
+  --bar-line:      rgba(255,255,255,0.2);
+  --beat-line:     rgba(255,255,255,0.1);
+  --transport-height: 52px;
+  --toolbar-height:   40px;
+  --keyboard-width:   72px;
+  --velocity-height:  100px;
+  --track-panel-w:    200px;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  user-select: none;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+select, input[type='number'], input[type='text'] {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: inherit;
+}
+
+select:focus, input:focus {
+  outline: 1px solid var(--accent);
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

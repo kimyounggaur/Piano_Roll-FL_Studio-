@@ -1,0 +1,99 @@
+.track-panel {
+  width: var(--track-panel-w);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.track-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.track-panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.track-add-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.track-add-btn:hover { background: var(--accent-dim); }
+
+.track-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.track-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.1s;
+  margin-bottom: 2px;
+}
+.track-item:hover  { background: rgba(255,255,255,0.05); }
+.track-item.active { background: rgba(74,158,255,0.15); }
+
+.track-color-bar {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.track-name {
+  flex: 1;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-actions {
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.track-item:hover .track-actions,
+.track-item.active .track-actions { opacity: 1; }
+
+.track-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  background: var(--bg-primary);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.track-btn:hover  { background: var(--border); color: var(--text-primary); }
+.track-btn.dim    { color: #555; background: var(--bg-primary); }
+.track-btn.solo   { background: var(--accent); color: #fff; }
+.track-btn.danger:hover { background: #c0392b; color: #fff; }

@@ -1,0 +1,36 @@
+.piano-roll-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.piano-roll-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.piano-roll-main {
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.piano-roll-canvas-wrapper {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.velocity-lane-wrapper {
+  display: flex;
+  flex-direction: row;
+  flex-shrink: 0;
+  border-top: 2px solid var(--border);
+  overflow: hidden;
+}
