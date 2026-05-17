@@ -30,7 +30,8 @@ export const PianoKeyboard: React.FC<Props> = ({ height }) => {
     canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
 
-    ctx.fillStyle = '#0d0d1a';
+    // Wise near-black keyboard background
+    ctx.fillStyle = '#0e0f0c';
     ctx.fillRect(0, 0, KEYBOARD_WIDTH, height);
 
     const firstVisible = Math.floor(scrollY / keyHeight);
@@ -41,27 +42,40 @@ export const PianoKeyboard: React.FC<Props> = ({ height }) => {
       const y = i * keyHeight - scrollY;
       const black = isBlackKey(pitch);
       const inScale = isInScale(pitch, settings.scaleRoot, settings.scaleName);
+      const scaleActive = settings.scaleName !== 'none';
 
       if (black) {
-        ctx.fillStyle = '#111122';
+        // Wise near-black for black keys
+        ctx.fillStyle = '#0e0f0c';
         ctx.fillRect(0, y, KEYBOARD_WIDTH * 0.62, keyHeight - 1);
-        ctx.fillStyle = '#333355';
+        // Slightly lighter right edge for depth
+        ctx.fillStyle = '#1e2018';
         ctx.fillRect(KEYBOARD_WIDTH * 0.62, y, KEYBOARD_WIDTH * 0.38, keyHeight - 1);
       } else {
-        ctx.fillStyle = inScale && settings.scaleName !== 'none' ? '#c8d8f8' : '#dde4f0';
+        // In-scale keys get Wise Light Mint tint; others are Wise Light Surface
+        ctx.fillStyle = scaleActive && inScale ? '#d4f0b5' : '#e8ebe6';
         ctx.fillRect(0, y, KEYBOARD_WIDTH - 1, keyHeight - 1);
+        // Subtle inner shadow on white keys
+        ctx.fillStyle = 'rgba(14,15,12,0.05)';
+        ctx.fillRect(0, y, KEYBOARD_WIDTH - 1, 1);
       }
 
-      // Octave C label
+      // Wise Green tint for in-scale black keys
+      if (black && scaleActive && inScale) {
+        ctx.fillStyle = 'rgba(159,232,112,0.18)';
+        ctx.fillRect(0, y, KEYBOARD_WIDTH * 0.62, keyHeight - 1);
+      }
+
+      // C label — Wise Dark Green on white key, accent on black
       if (pitch % 12 === 0) {
-        ctx.fillStyle = '#555577';
-        ctx.font = `bold 9px sans-serif`;
+        ctx.fillStyle = black ? '#9fe870' : '#163300';
+        ctx.font = 'bold 8px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText(`C${Math.floor(pitch / 12) - 1}`, KEYBOARD_WIDTH - 3, y + keyHeight - 3);
+        ctx.fillText(`C${Math.floor(pitch / 12) - 1}`, KEYBOARD_WIDTH - 4, y + keyHeight - 3);
       }
 
-      // Thin separator
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      // Thin separator — Wise ring-shadow style
+      ctx.fillStyle = 'rgba(14,15,12,0.25)';
       ctx.fillRect(0, y + keyHeight - 1, KEYBOARD_WIDTH, 1);
     }
   }, [height, keyHeight, scrollY, settings.scaleRoot, settings.scaleName]);

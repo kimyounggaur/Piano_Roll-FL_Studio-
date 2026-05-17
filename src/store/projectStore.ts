@@ -20,9 +20,16 @@ export interface SelectionRect {
 // ═══════════════════════════════════════════════════════════════════
 //  Factory helpers
 // ═══════════════════════════════════════════════════════════════════
+// Wise-inspired track colour palette
 const TRACK_COLORS = [
-  '#4a9eff', '#ff6b6b', '#6bcb77', '#ffd93d',
-  '#c77dff', '#ff9f43', '#48dbfb', '#ff6fa1',
+  '#9fe870',  // Wise Green (primary)
+  '#ffc091',  // Wise Bright Orange
+  '#ffd11a',  // Wise Warning Yellow
+  '#38c8ff',  // Background Cyan (solid)
+  '#cdffad',  // Wise Pastel Green
+  '#d03238',  // Wise Danger Red
+  '#e2f6d5',  // Wise Light Mint
+  '#868685',  // Wise Gray
 ] as const;
 
 function nanoid(): string {

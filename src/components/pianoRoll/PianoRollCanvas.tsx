@@ -51,8 +51,8 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
     canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
 
-    // Background
-    ctx.fillStyle = '#12121e';
+    // ── Wise near-black canvas background ──
+    ctx.fillStyle = '#090a08';
     ctx.fillRect(0, 0, width, height);
 
     const { ppq, timeSignature: ts, bars, scaleRoot, scaleName } = settings;
@@ -60,27 +60,30 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
     const ticksPerBar  = ticksPerBeat * ts.numerator;
     const snapTicks    = snapUnitToTicks(settings.snapUnit, ppq);
 
-    // Horizontal key lanes
+    // ── Horizontal key lane shading ──
     const firstKey = Math.floor(vp.scrollY / vp.keyHeight);
     const lastKey  = Math.min(TOTAL_KEYS - 1, Math.ceil((vp.scrollY + height) / vp.keyHeight));
     for (let i = firstKey; i <= lastKey; i++) {
       const pitch = TOTAL_KEYS - 1 - i;
       const y = i * vp.keyHeight - vp.scrollY;
+      // black key rows — darker tint
       if (isBlackKey(pitch)) {
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillStyle = 'rgba(0,0,0,0.32)';
         ctx.fillRect(0, y, width, vp.keyHeight);
       }
+      // C-line subtle rule
       if (pitch % 12 === 0) {
-        ctx.fillStyle = 'rgba(255,255,255,0.04)';
+        ctx.fillStyle = 'rgba(159,232,112,0.06)';  // Wise Green tint
         ctx.fillRect(0, y, width, 1);
       }
+      // Non-scale rows — dim overlay
       if (scaleName !== 'none' && !isInScale(pitch, scaleRoot, scaleName)) {
-        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
         ctx.fillRect(0, y, width, vp.keyHeight);
       }
     }
 
-    // Vertical time grid
+    // ── Vertical time grid — Wise subtle lines ──
     const startTick = Math.floor(vp.scrollX / vp.pixelsPerTick / snapTicks) * snapTicks;
     const endTick   = Math.ceil((vp.scrollX + width) / vp.pixelsPerTick);
     for (let t = startTick; t <= Math.min(endTick, totalTicks()); t += snapTicks) {
@@ -88,27 +91,32 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       if (x < 0 || x > width) continue;
       const isBar  = t % ticksPerBar  === 0;
       const isBeat = t % ticksPerBeat === 0;
-      ctx.strokeStyle = isBar ? 'rgba(255,255,255,0.22)' : isBeat ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)';
+      ctx.strokeStyle = isBar
+        ? 'rgba(232,235,230,0.20)'
+        : isBeat
+          ? 'rgba(232,235,230,0.08)'
+          : 'rgba(232,235,230,0.035)';
       ctx.lineWidth = isBar ? 1.5 : 1;
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
     }
 
-    // Bar numbers
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.font = '10px sans-serif';
+    // ── Bar numbers — Wise weight-900 style ──
+    ctx.fillStyle = 'rgba(159,232,112,0.45)';  // Wise Green tint
+    ctx.font = '900 10px Inter, sans-serif';
+    ctx.font = 'bold 10px sans-serif';
     for (let b = 0; b <= bars; b++) {
       const t = b * ticksPerBar;
       const x = tickToX(t, vp);
       if (x >= 0 && x < width) ctx.fillText(String(b + 1), x + 3, 12);
     }
 
-    // Ghost notes from inactive tracks
+    // ── Ghost notes — Wise muted overlay ──
     const soloActive = project.tracks.some((tr) => tr.solo);
     for (const track of project.tracks) {
       if (track.id === project.activeTrackId) continue;
       const hidden = track.muted || (soloActive && !track.solo);
       if (hidden) continue;
-      ctx.globalAlpha = 0.25;
+      ctx.globalAlpha = 0.22;
       for (const note of track.notes) {
         const x = tickToX(note.startTick, vp);
         const w = note.durationTicks * vp.pixelsPerTick;
@@ -120,7 +128,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       ctx.globalAlpha = 1;
     }
 
-    // Active track notes
+    // ── Active track notes — Wise Green notes ──
     const activeTrack = project.tracks.find((t) => t.id === project.activeTrackId);
     if (activeTrack) {
       for (const note of activeTrack.notes) {
@@ -129,38 +137,58 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         const y = pitchToY(note.pitch, vp);
         if (x + w < 0 || x > width) continue;
         const nw = Math.max(3, w - 1);
-        ctx.fillStyle = note.selected ? '#ffd93d' : activeTrack.color;
-        ctx.fillRect(x, y + 1, nw, vp.keyHeight - 2);
-        // Lighter top edge
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        const nh = vp.keyHeight - 2;
+
+        // Note body — selected = Wise Warning Yellow
+        const baseColor = note.selected ? '#ffd11a' : activeTrack.color;
+        ctx.fillStyle = baseColor;
+        ctx.fillRect(x, y + 1, nw, nh);
+
+        // Wise: subtle lighter top-edge highlight
+        ctx.fillStyle = note.selected
+          ? 'rgba(255,255,255,0.4)'
+          : 'rgba(255,255,255,0.25)';
         ctx.fillRect(x, y + 1, nw, 2);
-        // Resize handle visual
-        ctx.fillStyle = 'rgba(0,0,0,0.4)';
-        ctx.fillRect(x + nw - 3, y + 2, 3, vp.keyHeight - 4);
+
+        // Wise: dark green label on note (for selected notes)
+        if (note.selected && nw > 14) {
+          ctx.fillStyle = '#163300';
+          ctx.font = 'bold 8px sans-serif';
+          ctx.fillText('✓', x + 3, y + nh - 3);
+        }
+
+        // Resize handle — Wise ring style
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(x + nw - 3, y + 2, 3, nh - 4);
       }
     }
 
-    // Playhead
+    // ── Playhead — Wise Danger Red ──
     const { playheadTick } = useProjectStore.getState();
     const px = tickToX(playheadTick, vp);
     if (px >= 0 && px < width) {
-      ctx.strokeStyle = '#ff6b6b';
+      ctx.strokeStyle = '#d03238';   // Wise Danger Red
       ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, height); ctx.stroke();
+      // Triangle head
+      ctx.fillStyle = '#d03238';
+      ctx.beginPath();
+      ctx.moveTo(px - 4, 0); ctx.lineTo(px + 4, 0); ctx.lineTo(px, 6);
+      ctx.closePath(); ctx.fill();
     }
 
-    // Selection box
+    // ── Selection box — Wise Warning Yellow ──
     const d = drag.current;
     if (d.type === 'select-box' && d.boxX2 !== undefined && d.boxY2 !== undefined) {
       const bx = Math.min(d.startX, d.boxX2);
       const by = Math.min(d.startY, d.boxY2);
       const bw = Math.abs(d.boxX2 - d.startX);
       const bh = Math.abs(d.boxY2 - d.startY);
-      ctx.strokeStyle = '#ffd93d';
+      ctx.strokeStyle = '#ffd11a';   // Wise Warning Yellow
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 3]);
       ctx.strokeRect(bx, by, bw, bh);
-      ctx.fillStyle = 'rgba(255,217,61,0.08)';
+      ctx.fillStyle = 'rgba(255,209,26,0.07)';
       ctx.fillRect(bx, by, bw, bh);
       ctx.setLineDash([]);
     }

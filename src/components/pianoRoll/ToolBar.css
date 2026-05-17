@@ -1,53 +1,76 @@
+/* ── Wise-styled Toolbar ────────────────────────────────────────── */
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   height: var(--toolbar-height);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
-  padding: 0 12px;
+  padding: 0 14px;
   flex-shrink: 0;
 }
 
 .toolbar-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .toolbar-divider {
   width: 1px;
-  height: 24px;
+  height: 22px;
   background: var(--border);
   margin: 0 8px;
 }
 
+/* Wise: pill tool buttons */
 .tool-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 5px;
-  background: var(--bg-surface);
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: transparent;
   color: var(--text-muted);
-  font-size: 12px;
-  transition: background 0.12s, color 0.12s;
-}
-.tool-btn:hover { color: var(--text-primary); background: var(--accent-dim); }
-.tool-btn.active { background: var(--accent); color: #fff; }
-
-.tool-icon { font-size: 14px; line-height: 1; }
-.tool-label { font-size: 12px; font-weight: 500; }
-
-.toolbar-label {
   font-size: 11px;
-  color: var(--text-muted);
   font-weight: 600;
-  letter-spacing: 0.05em;
+  white-space: nowrap;
+  /* transition from global */
+}
+.tool-btn:hover {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+/* Wise Green active state */
+.tool-btn.active {
+  background: var(--accent);
+  color: var(--accent-dark);
+}
+.tool-btn.active:hover { background: var(--accent); }
+
+.tool-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* Wise: weight-900 uppercase label */
+.toolbar-label {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
 }
 
 .toolbar-select {
-  font-size: 12px;
-  padding: 3px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
   height: 26px;
+  border-radius: var(--radius-sm);
+  border-color: var(--border);
+}
+.toolbar-select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

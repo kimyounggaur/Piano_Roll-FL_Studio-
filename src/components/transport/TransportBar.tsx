@@ -76,9 +76,13 @@ export const TransportBar: React.FC = () => {
         </button>
       </div>
 
+      <div className="transport-divider" />
+
       <div className="transport-section transport-position">
         <span className="position-display">{barPos}</span>
       </div>
+
+      <div className="transport-divider" />
 
       <div className="transport-section">
         <label className="transport-label">BPM</label>

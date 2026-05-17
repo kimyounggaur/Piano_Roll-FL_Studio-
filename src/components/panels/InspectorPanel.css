@@ -1,5 +1,6 @@
+/* ── Wise-styled Inspector Panel ────────────────────────────────── */
 .inspector-panel {
-  width: 160px;
+  width: var(--inspector-w);
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
@@ -8,18 +9,20 @@
   overflow: hidden;
 }
 
+/* Wise: weight-900 section header */
 .inspector-header {
-  padding: 8px 12px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  padding: 10px 14px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .inspector-section {
-  padding: 8px 12px;
+  padding: 8px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -31,22 +34,37 @@
   gap: 6px;
 }
 
-.inspector-label  { font-size: 10px; color: var(--text-muted); }
-.inspector-value  { font-size: 12px; color: var(--text-primary); font-weight: 500; }
+.inspector-label  {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.inspector-value  {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
 
 .inspector-divider {
   height: 1px;
   background: var(--border);
-  margin: 4px 0;
+  margin: 2px 0;
 }
 
+/* Wise: subtle pill buttons */
 .inspector-btn {
-  padding: 6px 10px;
-  border-radius: 5px;
+  padding: 7px 12px;
+  border-radius: var(--radius-pill);
   background: var(--bg-surface);
-  color: var(--text-primary);
-  font-size: 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
   text-align: center;
-  transition: background 0.12s;
+  border: 1px solid var(--border);
 }
-.inspector-btn:hover { background: var(--accent); color: #fff; }
+.inspector-btn:hover {
+  /* Wise Green CTA on hover */
+  background: var(--accent);
+  color: var(--accent-dark);
+  border-color: transparent;
+}

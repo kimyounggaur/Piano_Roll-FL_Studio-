@@ -27,14 +27,17 @@ export const VelocityLane: React.FC<Props> = ({ width, height }) => {
     canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
 
-    ctx.fillStyle = '#0e0e1c';
+    // Wise near-black velocity panel
+    ctx.fillStyle = '#0a0b09';
     ctx.fillRect(0, 0, width, height);
 
-    // Guide lines at 25%, 50%, 75%, 100%
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    // Guide lines — Wise subtle green tint
     ctx.lineWidth = 1;
-    for (const frac of [0.25, 0.5, 0.75]) {
-      const y = height - frac * height;
+    for (const frac of [0.25, 0.5, 0.75, 1.0]) {
+      const y = height - frac * (height - 4);
+      ctx.strokeStyle = frac === 1.0
+        ? 'rgba(159,232,112,0.15)'    // Wise Green top line
+        : 'rgba(232,235,230,0.05)';
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
     }
 
@@ -47,23 +50,30 @@ export const VelocityLane: React.FC<Props> = ({ width, height }) => {
       const barH = Math.max(2, (note.velocity / 127) * (height - 4));
       const y = height - barH;
 
+      // Wise Green gradient for normal, Warning Yellow for selected
+      const topColor = note.selected ? '#ffd11a' : activeTrack.color;
       const grad = ctx.createLinearGradient(0, y, 0, height);
-      grad.addColorStop(0, note.selected ? '#ffd93d' : activeTrack.color);
-      grad.addColorStop(1, 'rgba(0,0,0,0.4)');
+      grad.addColorStop(0, topColor);
+      grad.addColorStop(1, 'rgba(14,15,12,0.5)');
       ctx.fillStyle = grad;
       ctx.fillRect(x, y, 3, barH);
 
-      // Handle dot
-      ctx.fillStyle = note.selected ? '#fff' : 'rgba(255,255,255,0.6)';
+      // Handle dot — Wise ring style
+      ctx.fillStyle = note.selected ? '#163300' : topColor;
       ctx.beginPath();
-      ctx.arc(x + 1.5, y, 3, 0, Math.PI * 2);
+      ctx.arc(x + 1.5, y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      // White inner dot
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath();
+      ctx.arc(x + 1.5, y, 1.5, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Label
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.font = '10px sans-serif';
-    ctx.fillText('VELOCITY', 4, 12);
+    // Label — Wise weight-900 style
+    ctx.fillStyle = 'rgba(159,232,112,0.35)';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillText('VELOCITY', 5, 12);
   }, [width, height, vp, project]);
 
   useEffect(() => { draw(); });

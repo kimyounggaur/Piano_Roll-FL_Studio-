@@ -1,3 +1,4 @@
+/* ── Wise-styled Track Panel ────────────────────────────────────── */
 .track-panel {
   width: var(--track-panel-w);
   display: flex;
@@ -12,61 +13,72 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
+/* Wise: weight-900 uppercase section label */
 .track-panel-title {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
   color: var(--text-muted);
+  text-transform: uppercase;
 }
 
+/* Wise Green pill add button */
 .track-add-btn {
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-dark);
   font-size: 18px;
   line-height: 1;
+  font-weight: 900;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding-bottom: 1px;
 }
-.track-add-btn:hover { background: var(--accent-dim); }
+.track-add-btn:hover  { background: var(--accent-dim); }
 
 .track-list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px;
+  padding: 6px;
 }
 
+/* Wise: 16px radius card for track items */
 .track-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
-  border-radius: 5px;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.1s;
-  margin-bottom: 2px;
+  transition: background 0.12s;
+  margin-bottom: 3px;
 }
-.track-item:hover  { background: rgba(255,255,255,0.05); }
-.track-item.active { background: rgba(74,158,255,0.15); }
+.track-item:hover  { background: var(--bg-hover); }
+.track-item.active {
+  background: var(--accent-subtle);
+  /* Wise ring-shadow instead of background fill */
+  box-shadow: 0 0 0 1px var(--accent-border);
+}
 
 .track-color-bar {
   width: 4px;
-  height: 20px;
-  border-radius: 2px;
+  height: 22px;
+  border-radius: var(--radius-pill);
   flex-shrink: 0;
 }
 
 .track-name {
   flex: 1;
   font-size: 12px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -74,26 +86,29 @@
 
 .track-actions {
   display: flex;
-  gap: 3px;
+  gap: 2px;
   opacity: 0;
   transition: opacity 0.15s;
 }
 .track-item:hover .track-actions,
 .track-item.active .track-actions { opacity: 1; }
 
+/* Wise: pill control buttons */
 .track-btn {
-  width: 20px;
-  height: 20px;
-  border-radius: 3px;
-  background: var(--bg-primary);
-  font-size: 10px;
-  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
   color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.track-btn:hover  { background: var(--border); color: var(--text-primary); }
-.track-btn.dim    { color: #555; background: var(--bg-primary); }
-.track-btn.solo   { background: var(--accent); color: #fff; }
-.track-btn.danger:hover { background: #c0392b; color: #fff; }
+.track-btn:hover  { background: var(--border-accent); color: var(--text-primary); }
+.track-btn.dim    { color: var(--text-disabled); }
+/* Wise Green for solo */
+.track-btn.solo   { background: var(--accent); color: var(--accent-dark); }
+.track-btn.danger:hover { background: var(--danger); color: #fff; }

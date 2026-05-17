@@ -1,43 +1,93 @@
+/* ── Reset ──────────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+/* ── Wise Dark Design System ────────────────────────────────────── */
 :root {
-  --bg-primary:    #1a1a2e;
-  --bg-secondary:  #16213e;
-  --bg-surface:    #0f3460;
-  --bg-canvas:     #12121e;
-  --accent:        #4a9eff;
-  --accent-dim:    #2d6bbf;
-  --text-primary:  #e8e8f0;
-  --text-muted:    #7f8fa6;
-  --border:        #2a2a4a;
-  --note-default:  #4a9eff;
-  --note-selected: #ffd93d;
-  --black-key:     #111122;
-  --white-key:     #dde4f0;
-  --grid-line:     rgba(255,255,255,0.06);
-  --bar-line:      rgba(255,255,255,0.2);
-  --beat-line:     rgba(255,255,255,0.1);
-  --transport-height: 52px;
-  --toolbar-height:   40px;
+  /* Core palette — Wise near-black as the canvas */
+  --bg-primary:    #0e0f0c;          /* Wise near-black */
+  --bg-secondary:  #141610;          /* Slightly lifted surface */
+  --bg-surface:    #1c1f18;          /* Panel / card surface */
+  --bg-canvas:     #090a08;          /* Deepest canvas background */
+  --bg-hover:      rgba(159,232,112,0.06); /* Wise Green tint hover */
+
+  /* Wise Green accent */
+  --accent:        #9fe870;          /* Wise Green — buttons, accents, notes */
+  --accent-dark:   #163300;          /* Dark Green — text ON green */
+  --accent-dim:    #7bc554;          /* Hover green */
+  --accent-subtle: rgba(159,232,112,0.12);
+  --accent-border: rgba(159,232,112,0.22);
+
+  /* Text — inverted Wise palette */
+  --text-primary:  #e8ebe6;          /* Wise Light Surface → primary text in dark */
+  --text-secondary:#b8bcb5;          /* Lighter mid-gray */
+  --text-muted:    #868685;          /* Wise Gray */
+  --text-disabled: #454745;          /* Wise Warm Dark */
+
+  /* Borders — ring shadow philosophy */
+  --border:        rgba(232,235,230,0.09);
+  --border-accent: rgba(159,232,112,0.25);
+  --ring:          rgba(14,15,12,0.12) 0 0 0 1px;
+
+  /* Semantic */
+  --danger:        #d03238;          /* Wise Danger Red */
+  --warning:       #ffd11a;          /* Wise Warning Yellow */
+  --positive:      #054d28;          /* Wise Positive Green */
+  --info-bg:       rgba(56,200,255,0.10);
+
+  /* Notes */
+  --note-default:  #9fe870;          /* Wise Green */
+  --note-selected: #ffd11a;          /* Wise Warning Yellow */
+  --ghost-note:    rgba(159,232,112,0.28);
+
+  /* Piano keys */
+  --black-key:     #0e0f0c;
+  --black-key-side:#1e2018;
+  --white-key:     #e8ebe6;
+  --white-key-scale:#d4f0b5;         /* Light Mint tint for in-scale keys */
+
+  /* Grid lines */
+  --grid-bar:      rgba(232,235,230,0.20);
+  --grid-beat:     rgba(232,235,230,0.08);
+  --grid-snap:     rgba(232,235,230,0.035);
+
+  /* Radii — Wise scale */
+  --radius-xs:     4px;
+  --radius-sm:     10px;
+  --radius-md:     16px;
+  --radius-lg:     30px;
+  --radius-pill:   9999px;
+
+  /* Layout dimensions */
+  --transport-height: 56px;
+  --toolbar-height:   44px;
   --keyboard-width:   72px;
   --velocity-height:  100px;
-  --track-panel-w:    200px;
+  --track-panel-w:    210px;
+  --inspector-w:      160px;
 }
 
+/* ── Base ───────────────────────────────────────────────────────── */
 html, body, #root {
   height: 100%;
   overflow: hidden;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+
+  /* Wise: Inter 600 as default reading weight */
+  font-family: 'Inter', Helvetica, Arial, sans-serif;
   font-size: 13px;
+  font-weight: 600;
+  /* Wise: "calt" on all text */
+  font-feature-settings: "calt" 1;
+  -webkit-font-smoothing: antialiased;
   user-select: none;
 }
 
+/* ── Interactive elements ───────────────────────────────────────── */
 button {
   cursor: pointer;
   border: none;
@@ -45,21 +95,49 @@ button {
   background: none;
   color: inherit;
   font: inherit;
+  font-feature-settings: "calt" 1;
+  /* Wise: scale animation on all buttons */
+  transition: transform 0.18s ease, background 0.15s ease, color 0.15s ease;
 }
+button:hover  { transform: scale(1.05); }
+button:active { transform: scale(0.95); }
 
 select, input[type='number'], input[type='text'] {
-  background: var(--bg-secondary);
+  background: var(--bg-surface);
   border: 1px solid var(--border);
   color: var(--text-primary);
-  border-radius: 4px;
-  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
   font: inherit;
+  font-feature-settings: "calt" 1;
+  transition: box-shadow 0.15s;
 }
-
 select:focus, input:focus {
-  outline: 1px solid var(--accent);
+  outline: none;
+  box-shadow: rgba(14,15,12,0.12) 0 0 0 1px, 0 0 0 2px var(--accent);
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* ── Wise Primary Button ────────────────────────────────────────── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: var(--accent-dark);
+  padding: 8px 20px;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.btn-primary:hover  { transform: scale(1.05); background: var(--accent); }
+.btn-primary:active { transform: scale(0.95); }
+
+/* ── Scrollbars ─────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-accent);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }

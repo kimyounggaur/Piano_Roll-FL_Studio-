@@ -3,13 +3,16 @@ import { useProjectStore } from '../../store/projectStore';
 import './TrackPanel.css';
 
 export const TrackPanel: React.FC = () => {
-  const { project, addTrack, removeTrack, setActiveTrack, updateTrack } = useProjectStore();
+  const {
+    project, addTrack, removeTrack, setActiveTrack,
+    toggleTrackMute, toggleTrackSolo,
+  } = useProjectStore();
   const { tracks, activeTrackId } = project;
 
   return (
     <div className="track-panel">
       <div className="track-panel-header">
-        <span className="track-panel-title">TRACKS</span>
+        <span className="track-panel-title">Tracks</span>
         <button className="track-add-btn" onClick={addTrack} title="Add track">+</button>
       </div>
       <div className="track-list">
@@ -25,12 +28,12 @@ export const TrackPanel: React.FC = () => {
               <button
                 className={`track-btn${track.muted ? ' dim' : ''}`}
                 title="Mute"
-                onClick={(e) => { e.stopPropagation(); updateTrack(track.id, { muted: !track.muted }); }}
+                onClick={(e) => { e.stopPropagation(); toggleTrackMute(track.id); }}
               >M</button>
               <button
                 className={`track-btn${track.solo ? ' solo' : ''}`}
                 title="Solo"
-                onClick={(e) => { e.stopPropagation(); updateTrack(track.id, { solo: !track.solo }); }}
+                onClick={(e) => { e.stopPropagation(); toggleTrackSolo(track.id); }}
               >S</button>
               {tracks.length > 1 && (
                 <button
