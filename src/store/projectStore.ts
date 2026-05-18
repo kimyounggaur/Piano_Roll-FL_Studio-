@@ -223,6 +223,11 @@ interface ProjectStore {
    * Originals are deselected; copies are selected.
    */
   duplicateSelectedNotes: () => void;
+  /**
+   * Copy all selected notes in place (no offset).  Originals are deselected;
+   * copies are selected.  Used by Alt-drag to clone before moving.
+   */
+  duplicateSelectedNotesInPlace: () => void;
   setVelocityForSelectedNotes: (velocity: number) => void;
 
   // ── transport ────────────────────────────────────────────────────
@@ -529,6 +534,30 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
             selected: true,
           }));
           // deselect originals, add copies
+          return {
+            ...t,
+            notes: [
+              ...t.notes.map((n) => ({ ...n, selected: false })),
+              ...copies,
+            ],
+          };
+        }),
+      },
+    }));
+  },
+
+  duplicateSelectedNotesInPlace: () => {
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => {
+          const selected = t.notes.filter((n) => n.selected);
+          if (selected.length === 0) return t;
+          const copies: Note[] = selected.map((n) => ({
+            ...n,
+            id: nanoid(),
+            selected: true,
+          }));
           return {
             ...t,
             notes: [

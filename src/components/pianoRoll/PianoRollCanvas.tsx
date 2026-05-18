@@ -36,7 +36,16 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
     project, viewport, activeTool,
     addNote, removeNote, updateNote, selectNote, clearSelection,
     setViewport, snapTickValue, totalTicks,
+    moveSelectedNotes, duplicateSelectedNotesInPlace,
   } = useProjectStore();
+
+  // Drag preview — deltas in tick/pitch space + last cursor coords for tooltip.
+  // null while not dragging.  Triggers a re-render (and hence canvas redraw)
+  // whenever the user moves the mouse during a move-drag, so the canvas
+  // reflects the in-flight move without committing it to the store every frame.
+  const [movePreview, setMovePreview] = useState<
+    { dT: number; dP: number; mx: number; my: number } | null
+  >(null);
   const { settings } = project;
   const vp = viewport;
 
@@ -157,9 +166,12 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
     const activeTrack = project.tracks.find((t) => t.id === project.activeTrackId);
     if (activeTrack) {
       for (const note of activeTrack.notes) {
-        const x = tickToX(note.startTick, vp);
+        // Apply in-flight drag preview offset to selected notes
+        const dT = note.selected && movePreview ? movePreview.dT : 0;
+        const dP = note.selected && movePreview ? movePreview.dP : 0;
+        const x = tickToX(note.startTick + dT, vp);
         const w = note.durationTicks * vp.pixelsPerTick;
-        const y = pitchToY(note.pitch, vp);
+        const y = pitchToY(note.pitch + dP, vp);
         if (x + w < 0 || x > width) continue;
         const nw = Math.max(3, w - 1);
         const nh = vp.keyHeight - 2;
@@ -205,7 +217,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       ctx.fillRect(bx, by, bw, bh);
       ctx.setLineDash([]);
     }
-  }, [width, height, vp, project, settings, totalTicks]);
+  }, [width, height, vp, project, settings, totalTicks, movePreview]);
 
   useEffect(() => { draw(); });
 
@@ -313,7 +325,15 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
 
       if (activeTool === 'select') {
         if (hit) {
-          selectNote(hit.trackId, hit.note.id, additive);
+          // Ensure the clicked note is part of the selection.  If it was
+          // already selected, leave the existing multi-selection intact so
+          // dragging moves the whole group.
+          if (!hit.note.selected) {
+            selectNote(hit.trackId, hit.note.id, additive);
+          }
+          // Alt-drag: clone the selection in place; the copies are now the
+          // selection and will follow the drag.
+          if (e.altKey) duplicateSelectedNotesInPlace();
           drag.current = {
             type: 'move',
             noteId: hit.note.id,
@@ -342,8 +362,11 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
             origDuration: hit.note.durationTicks,
           };
         } else {
-          // clicking existing note → select + start move
-          selectNote(hit.trackId, hit.note.id, additive);
+          // clicking existing note on draw tool → select + start move
+          if (!hit.note.selected) {
+            selectNote(hit.trackId, hit.note.id, additive);
+          }
+          if (e.altKey) duplicateSelectedNotesInPlace();
           drag.current = {
             type: 'move',
             noteId: hit.note.id,
@@ -372,7 +395,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         drag.current = { type: 'draw', startX: cx, startY: cy };
       }
     },
-    [activeTool, vp, hitTest, snapTickValue, project, settings, totalTicks, addNote, removeNote, selectNote, clearSelection, getCursorPos]
+    [activeTool, vp, hitTest, snapTickValue, project, settings, totalTicks, addNote, removeNote, selectNote, clearSelection, duplicateSelectedNotesInPlace, getCursorPos]
   );
 
   const handleMouseMove = useCallback(
@@ -386,31 +409,46 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         return;
       }
 
-      if ((d.type === 'move' || d.type === 'resize') && d.noteId && d.trackId) {
+      if (d.type === 'move' && d.noteId && d.trackId) {
+        // Ctrl/Cmd held → bypass snap; otherwise snap to grid
+        const unsnap = e.ctrlKey || e.metaKey;
+        const dx = cx - d.startX;
+        const dy = cy - d.startY;
+        const rawDeltaTick = dx / vp.pixelsPerTick;
+        const deltaTick = unsnap
+          ? Math.round(rawDeltaTick)
+          : snapTickValue(d.origStartTick! + rawDeltaTick) - d.origStartTick!;
+        const deltaPitch = -Math.round(dy / vp.keyHeight);
+
+        // Clamp so the anchor note can't go past 0 or 127
+        const clampedDeltaTick  = Math.max(-d.origStartTick!, deltaTick);
+        const clampedDeltaPitch = clamp(deltaPitch, -d.origPitch!, 127 - d.origPitch!);
+
+        // Local preview only — committed on mouseup
+        setMovePreview({ dT: clampedDeltaTick, dP: clampedDeltaPitch, mx: cx, my: cy });
+        return;
+      }
+
+      if (d.type === 'resize' && d.noteId && d.trackId) {
         const dx = cx - d.startX;
         const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
-        const deltaTick = snapTickValue(d.origStartTick! + dx / vp.pixelsPerTick) - d.origStartTick!;
-
-        if (d.type === 'move') {
-          const dy = cy - d.startY;
-          const deltaPitch = -Math.round(dy / vp.keyHeight);
-          const newTick  = clamp(d.origStartTick! + deltaTick, 0, totalTicks() - snapTicks);
-          const newPitch = clamp(d.origPitch! + deltaPitch, 0, 127);
-          updateNote(d.trackId, d.noteId, { startTick: newTick, pitch: newPitch });
-        } else {
-          const rawEndTick = d.origStartTick! + d.origDuration! + (dx / vp.pixelsPerTick);
-          const snappedEnd = snapTickValue(rawEndTick);
-          const newDur = Math.max(snapTicks, snappedEnd - d.origStartTick!);
-          updateNote(d.trackId, d.noteId, { durationTicks: newDur });
-        }
+        const rawEndTick = d.origStartTick! + d.origDuration! + (dx / vp.pixelsPerTick);
+        const snappedEnd = snapTickValue(rawEndTick);
+        const newDur = Math.max(snapTicks, snappedEnd - d.origStartTick!);
+        updateNote(d.trackId, d.noteId, { durationTicks: newDur });
       }
     },
-    [vp, settings, snapTickValue, totalTicks, updateNote, getCursorPos]
+    [vp, settings, snapTickValue, updateNote, getCursorPos]
   );
 
   const handleMouseUp = useCallback(
     () => {
       const d = drag.current;
+      // Commit move preview (if any) atomically
+      if (d.type === 'move' && movePreview && (movePreview.dT !== 0 || movePreview.dP !== 0)) {
+        moveSelectedNotes(movePreview.dP, movePreview.dT);
+      }
+      if (movePreview) setMovePreview(null);
       if (d.type === 'select-box' && d.boxX2 !== undefined && d.boxY2 !== undefined) {
         const x1 = Math.min(d.startX, d.boxX2);
         const x2 = Math.max(d.startX, d.boxX2);
@@ -433,7 +471,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       }
       drag.current = { type: 'none', startX: 0, startY: 0 };
     },
-    [vp, project, selectNote]
+    [vp, project, selectNote, movePreview, moveSelectedNotes]
   );
 
   // Scroll with mouse wheel
@@ -495,6 +533,43 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         ref={playheadCanvasRef}
         style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
       />
+      {movePreview && (movePreview.dT !== 0 || movePreview.dP !== 0) && (
+        <div
+          style={{
+            position: 'absolute',
+            left: clamp(movePreview.mx + 12, 0, Math.max(0, width - 140)),
+            top:  clamp(movePreview.my + 12, 0, Math.max(0, height - 28)),
+            pointerEvents: 'none',
+            background: 'rgba(14,15,12,0.92)',
+            color: 'var(--accent)',
+            border: '1px solid var(--accent-border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '4px 8px',
+            fontSize: 11,
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 10px rgba(0,0,0,0.35)',
+          }}
+        >
+          {formatMoveDelta(movePreview.dT, movePreview.dP, settings.ppq)}
+        </div>
+      )}
     </div>
   );
 };
+
+// ── Tooltip formatter ──────────────────────────────────────────────────────
+function formatMoveDelta(dT: number, dP: number, ppq: number): string {
+  const parts: string[] = [];
+  if (dT !== 0) {
+    const beats = dT / ppq;
+    const sign  = beats > 0 ? '+' : '';
+    const value = beats.toFixed(beats % 1 === 0 ? 0 : 2);
+    parts.push(`${sign}${value}박`);
+  }
+  if (dP !== 0) {
+    const sign = dP > 0 ? '+' : '';
+    parts.push(`${sign}${dP}반음`);
+  }
+  return parts.join(', ');
+}
