@@ -194,7 +194,19 @@ export interface ProjectSettings {
   quantizeDuration: boolean;    // also quantize note length
   humanizeTimingTicks: number;  // ± random shift in ticks
   humanizeVelocity: number;     // ± random delta in velocity units
+
+  // ── Strum / Arpeggiate defaults ────────────────────────────────────
+  strumAmountTicks: number;            // total spread of a strummed chord, in ticks
+  strumDirection: 'up' | 'down';
+  arpPattern: 'up' | 'down' | 'upDown' | 'random';
+  arpStepTicks: number;
+  arpRepeatCount: number;
+  arpReplaceOriginals: boolean;        // delete the source chord notes when arpeggiating
 }
+
+// Re-exports for convenience
+export type StrumDirection = 'up' | 'down';
+export type ArpPattern     = 'up' | 'down' | 'upDown' | 'random';
 
 // ═══════════════════════════════════════════════════════════════════
 //  Chord types

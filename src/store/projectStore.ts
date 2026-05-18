@@ -5,7 +5,8 @@ import type {
   SnapValue, ScaleType,
 } from '../types/music';
 import { ticksPerBar, snapUnitToTicks, snapTick } from '../utils/time';
-import { quantizeNote, humanizeNotes } from '../utils/noteTransforms';
+import { quantizeNote, humanizeNotes, strumNotes, arpeggiateNotes } from '../utils/noteTransforms';
+import type { StrumDirection, ArpPattern } from '../types/music';
 import { snapPitchToScale } from '../utils/musicTheory';
 import { DEFAULT_PPQ, DEFAULT_BPM } from '../types/music';
 
@@ -83,6 +84,12 @@ export function createDefaultProject(): Project {
       quantizeDuration: false,
       humanizeTimingTicks: 20,
       humanizeVelocity: 10,
+      strumAmountTicks: 60,
+      strumDirection: 'down',
+      arpPattern: 'up',
+      arpStepTicks: 120,
+      arpRepeatCount: 2,
+      arpReplaceOriginals: true,
     },
     tracks: [track],
     activeTrackId: track.id,
@@ -262,6 +269,22 @@ interface ProjectStore {
    * Pass `seed` for reproducible output.
    */
   humanizeSelectedNotes: (timingAmountTicks: number, velocityAmount: number, seed?: number) => void;
+  /**
+   * Spread chord-grouped selected notes across `amountTicks`.
+   * "up" = low-pitch-first cascade; "down" = high-pitch-first cascade.
+   */
+  strumSelectedNotes: (amountTicks: number, direction: StrumDirection) => void;
+  /**
+   * Replace (or augment) selected chord notes with an arpeggio.
+   * @param replaceOriginals  if true, delete the source notes before adding arp notes.
+   */
+  arpeggiateSelectedNotes: (
+    pattern: ArpPattern,
+    stepTicks: number,
+    repeatCount: number,
+    replaceOriginals?: boolean,
+    seed?: number,
+  ) => void;
 
   // ── transport ────────────────────────────────────────────────────
   setPlayheadTick: (tick: number) => void;
@@ -667,6 +690,43 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
             ...t,
             notes: t.notes.map((n) => byId.get(n.id) ?? n),
           };
+        }),
+      },
+    }));
+  },
+
+  strumSelectedNotes: (amountTicks, direction) => {
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => {
+          const selected = t.notes.filter((n) => n.selected);
+          if (selected.length < 2) return t;
+          const strummed = strumNotes(selected, { amountTicks, direction });
+          const byId = new Map(strummed.map((n) => [n.id, n]));
+          return {
+            ...t,
+            notes: t.notes.map((n) => byId.get(n.id) ?? n),
+          };
+        }),
+      },
+    }));
+  },
+
+  arpeggiateSelectedNotes: (pattern, stepTicks, repeatCount, replaceOriginals = true, seed) => {
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => {
+          const selected = t.notes.filter((n) => n.selected);
+          if (selected.length === 0) return t;
+          const arp = arpeggiateNotes(selected, { pattern, stepTicks, repeatCount, seed })
+            // Replace synthetic IDs with real ones, deselect any prior selection
+            .map((n) => ({ ...n, id: nanoid() }));
+          const kept = replaceOriginals
+            ? t.notes.filter((n) => !n.selected)
+            : t.notes.map((n) => ({ ...n, selected: false }));
+          return { ...t, notes: [...kept, ...arp] };
         }),
       },
     }));
