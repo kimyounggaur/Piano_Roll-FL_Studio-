@@ -1,4 +1,5 @@
 import { quantizeNote, humanizeNotes, strumNotes, arpeggiateNotes } from './noteTransforms';
+import { describe, it } from 'vitest';
 import type { Note } from '../types/music';
 
 function makeNote(over: Partial<Note> = {}): Note {
@@ -171,3 +172,9 @@ export function runNoteTransformChecks(): void {
     'seeded random arp is deterministic',
   );
 }
+
+describe('noteTransforms', () => {
+  it('quantize / humanize / strum / arpeggiate', () => {
+    runNoteTransformChecks();
+  });
+});

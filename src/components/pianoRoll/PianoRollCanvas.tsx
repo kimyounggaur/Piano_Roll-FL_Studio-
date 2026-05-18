@@ -1,6 +1,10 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useProjectStore } from '../../store/projectStore';
-import { tickToX, xToTick, pitchToY, yToPitch, clamp, rectsIntersect } from '../../utils/geometry';
+import {
+  tickToX, xToTick, pitchToY, yToPitch, clamp, rectsIntersect,
+  buildNoteIndex, forEachVisibleNote, getVisibleTickRange, getVisiblePitchRange,
+  type NoteIndex,
+} from '../../utils/geometry';
 import { snapUnitToTicks } from '../../utils/time';
 import { hasNoteAt, noteCellKey, notesUnder } from '../../utils/notes';
 import { isBlackKey, isInScale, snapPitchToScale, buildChord } from '../../utils/musicTheory';
@@ -73,6 +77,15 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   >(null);
   const { settings } = project;
   const vp = viewport;
+
+  // ── Per-track sorted index — recomputed only when a track's notes
+  // identity changes. Lets the render loop binary-search to the first
+  // visible note instead of iterating every note every frame.
+  const noteIndexByTrack = useMemo(() => {
+    const map = new Map<string, NoteIndex>();
+    for (const t of project.tracks) map.set(t.id, buildNoteIndex(t.notes));
+    return map;
+  }, [project.tracks]);
 
   // Keep viewport dimensions in sync so getVisiblePitchRange / getVisibleTickRange work
   useEffect(() => {
@@ -169,6 +182,10 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       if (x >= 0 && x < width) ctx.fillText(String(b + 1), x + 3, 12);
     }
 
+    // ── Visible tick / pitch ranges (used for ghost + active iteration) ──
+    const vTicks  = getVisibleTickRange({ ...vp, width });
+    const vPitch  = getVisiblePitchRange({ ...vp, height });
+
     // ── Ghost notes — Wise muted overlay ──
     if (settings.ghostNotesVisible) {
       const soloActive = project.tracks.some((tr) => tr.solo);
@@ -176,16 +193,17 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         if (track.id === project.activeTrackId) continue;
         const hidden = track.muted || (soloActive && !track.solo);
         if (hidden) continue;
+        const idx = noteIndexByTrack.get(track.id);
+        if (!idx) continue;
         ctx.globalAlpha = 0.22;
-        for (const note of track.notes) {
-          if (note.muted) continue;
+        ctx.fillStyle = track.color;
+        forEachVisibleNote(idx, vTicks.startTick, vTicks.endTick, vPitch.minPitch, vPitch.maxPitch, (note) => {
+          if (note.muted) return;
           const x = tickToX(note.startTick, vp);
           const w = note.durationTicks * vp.pixelsPerTick;
           const y = pitchToY(note.pitch, vp);
-          if (x + w < 0 || x > width) continue;
-          ctx.fillStyle = track.color;
           ctx.fillRect(x, y + 1, Math.max(2, w - 1), vp.keyHeight - 2);
-        }
+        });
         ctx.globalAlpha = 1;
       }
     }
@@ -193,7 +211,16 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
     // ── Active track notes — Wise Green notes ──
     const activeTrack = project.tracks.find((t) => t.id === project.activeTrackId);
     if (activeTrack) {
-      for (const note of activeTrack.notes) {
+      const idx = noteIndexByTrack.get(activeTrack.id);
+      // During an in-flight move, selected notes may shift past the visible
+      // range; widen pitch bounds by |dP| so they don't pop out.
+      const dPMax = movePreview ? Math.abs(movePreview.dP) : 0;
+      const dTMax = movePreview ? Math.abs(movePreview.dT) : 0;
+      const visibleStart = vTicks.startTick - dTMax;
+      const visibleEnd   = vTicks.endTick   + dTMax;
+      const visiblePMin  = vPitch.minPitch  - dPMax;
+      const visiblePMax  = vPitch.maxPitch  + dPMax;
+      const drawNote = (note: typeof activeTrack.notes[number]) => {
         // Apply in-flight drag preview offset to selected notes
         const dT = note.selected && movePreview ? movePreview.dT : 0;
         const dP = note.selected && movePreview ? movePreview.dP : 0;
@@ -211,7 +238,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         const x = tickToX(note.startTick + dT, vp);
         const w = previewDur * vp.pixelsPerTick;
         const y = pitchToY(note.pitch + dP, vp);
-        if (x + w < 0 || x > width) continue;
+        if (x + w < 0 || x > width) return;
         const nw = Math.max(3, w - 1);
         const nh = vp.keyHeight - 2;
 
@@ -244,6 +271,9 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         // Resize handle — Wise ring style
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         ctx.fillRect(x + nw - 3, y + 2, 3, nh - 4);
+      };
+      if (idx) {
+        forEachVisibleNote(idx, visibleStart, visibleEnd, visiblePMin, visiblePMax, drawNote);
       }
       ctx.globalAlpha = 1; // restore in case last note was muted
     }
@@ -284,7 +314,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       ctx.fillRect(bx, by, bw, bh);
       ctx.setLineDash([]);
     }
-  }, [width, height, vp, project, settings, totalTicks, movePreview, resizePreview, selectionRect]);
+  }, [width, height, vp, project, settings, totalTicks, movePreview, resizePreview, selectionRect, noteIndexByTrack]);
 
   useEffect(() => { draw(); });
 

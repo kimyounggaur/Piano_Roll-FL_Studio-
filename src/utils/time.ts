@@ -194,7 +194,8 @@ export function snapUnitToTicks(unit: SnapValue, ppq: number): number {
  */
 export function snapTick(tick: number, snapTicks: number): number {
   if (snapTicks <= 0) return tick;
-  return Math.round(tick / snapTicks) * snapTicks;
+  const snapped = Math.round(tick / snapTicks) * snapTicks;
+  return Object.is(snapped, -0) ? 0 : snapped;
 }
 
 /**

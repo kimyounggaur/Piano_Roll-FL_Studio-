@@ -154,3 +154,58 @@ export function getPianoKeyLabel(pitch: number): string {
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  Note index — sorted by startTick + cached maxDurationTicks.
+//  Lets renderers skip out-of-view notes in O(log N + visible) instead
+//  of O(N) per frame. Pure (no React) so it's trivially testable.
+// ═══════════════════════════════════════════════════════════════════
+export interface NoteIndex {
+  sorted: Note[];
+  maxDuration: number;
+}
+
+export function buildNoteIndex(notes: Note[]): NoteIndex {
+  if (notes.length === 0) return { sorted: [], maxDuration: 0 };
+  const sorted = notes.slice().sort((a, b) => a.startTick - b.startTick);
+  let maxDuration = 0;
+  for (const n of sorted) {
+    if (n.durationTicks > maxDuration) maxDuration = n.durationTicks;
+  }
+  return { sorted, maxDuration };
+}
+
+/** Smallest index whose note.startTick >= target. Returns sorted.length when none. */
+function lowerBound(sorted: Note[], target: number): number {
+  let lo = 0, hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sorted[mid].startTick < target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Iterate every note that *could* overlap `[startTick, endTick)` AND falls
+ * within `[minPitch, maxPitch]`. Coarse prefilter — callers still need to
+ * do a precise rect-clip for sub-pixel correctness.
+ */
+export function forEachVisibleNote(
+  idx: NoteIndex,
+  startTick: number,
+  endTick: number,
+  minPitch: number,
+  maxPitch: number,
+  fn: (n: Note) => void,
+): void {
+  if (idx.sorted.length === 0) return;
+  const firstIdx = Math.max(0, lowerBound(idx.sorted, startTick - idx.maxDuration));
+  for (let i = firstIdx; i < idx.sorted.length; i++) {
+    const n = idx.sorted[i];
+    if (n.startTick >= endTick) break;
+    if (n.startTick + n.durationTicks < startTick) continue;
+    if (n.pitch < minPitch || n.pitch > maxPitch) continue;
+    fn(n);
+  }
+}
