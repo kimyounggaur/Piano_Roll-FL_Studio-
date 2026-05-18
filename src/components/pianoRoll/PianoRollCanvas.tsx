@@ -527,6 +527,21 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
 
       if (activeTool === 'select') {
         if (hit) {
+          if (hit.isResize) {
+            if (!hit.note.selected) {
+              selectNote(hit.trackId, hit.note.id, additive);
+            }
+            drag.current = {
+              type: 'resize',
+              noteId: hit.note.id,
+              trackId: hit.trackId,
+              startX: cx, startY: cy,
+              origStartTick: hit.note.startTick,
+              origDuration: hit.note.durationTicks,
+            };
+            return;
+          }
+
           // Ensure the clicked note is part of the selection.  If it was
           // already selected, leave the existing multi-selection intact so
           // dragging moves the whole group.
@@ -589,6 +604,9 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       // draw tool
       if (hit) {
         if (hit.isResize) {
+          if (!hit.note.selected) {
+            selectNote(hit.trackId, hit.note.id, additive);
+          }
           drag.current = {
             type: 'resize',
             noteId: hit.note.id,
