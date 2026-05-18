@@ -1847,8 +1847,26 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   importProjectJson: (json) => get().importJSON(json),
 
   replaceProject: (project) => {
+    // Auto-migrate pre-pattern projects: wrap project.tracks into a single
+    // implicit Pattern 1 so downstream pattern actions are immediately valid.
+    const migrated: Project = { ...project };
+    if (!migrated.patterns || migrated.patterns.length === 0) {
+      const pid = nanoid();
+      migrated.patterns = [{
+        id: pid,
+        name: 'Pattern 1',
+        lengthBars: migrated.settings.bars,
+        tracks: migrated.tracks,
+      }];
+      migrated.activePatternId = pid;
+    } else if (!migrated.activePatternId
+        || !migrated.patterns.some((p) => p.id === migrated.activePatternId)) {
+      migrated.activePatternId = migrated.patterns[0].id;
+      migrated.tracks = migrated.patterns[0].tracks;
+      migrated.activeTrackId = migrated.tracks[0]?.id ?? null;
+    }
     set({
-      project,
+      project: migrated,
       _undoStack: [],
       _redoStack: [],
       _transactionSnapshot: null,

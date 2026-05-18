@@ -296,7 +296,33 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
           : (groupColor ?? activeTrack.color);
         ctx.globalAlpha = note.muted ? 0.35 : 1;
         ctx.fillStyle = baseColor;
-        ctx.fillRect(x, y + 1, nw, nh);
+        // ── Shape varies with noteKind (#48 visualisation) ──
+        //   normal      → rectangle (default)
+        //   slide       → right-leaning parallelogram (pitch ramps over time)
+        //   portamento  → rectangle with a small angled lead-in tab on the left
+        if (note.noteKind === 'slide') {
+          const skew = Math.min(nh - 2, nw * 0.5);
+          ctx.beginPath();
+          ctx.moveTo(x,            y + 1 + nh);
+          ctx.lineTo(x + nw - skew, y + 1 + nh);
+          ctx.lineTo(x + nw,        y + 1);
+          ctx.lineTo(x + skew,      y + 1);
+          ctx.closePath();
+          ctx.fill();
+        } else if (note.noteKind === 'portamento') {
+          ctx.fillRect(x, y + 1, nw, nh);
+          // small triangular flag on the left edge marking the lead-in
+          ctx.fillStyle = '#163300';
+          ctx.beginPath();
+          ctx.moveTo(x, y + 1);
+          ctx.lineTo(x + Math.min(6, nw), y + 1);
+          ctx.lineTo(x, y + 1 + Math.min(6, nh));
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = baseColor;
+        } else {
+          ctx.fillRect(x, y + 1, nw, nh);
+        }
 
         // Wise: subtle lighter top-edge highlight
         ctx.fillStyle = note.selected
