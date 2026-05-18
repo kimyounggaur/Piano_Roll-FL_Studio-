@@ -3,7 +3,8 @@ import { PianoKeyboard } from './PianoKeyboard';
 import { PianoRollCanvas } from './PianoRollCanvas';
 import { VelocityLane } from './VelocityLane';
 import { ToolBar } from './ToolBar';
-import { useProjectStore } from '../../store/projectStore';
+import { ShortcutsHelp } from './ShortcutsHelp';
+import { usePianoRollShortcuts } from '../../hooks/usePianoRollShortcuts';
 import './PianoRoll.css';
 
 const KEYBOARD_WIDTH = 72;
@@ -13,7 +14,9 @@ const MIN_ROLL_HEIGHT = 200;
 export const PianoRoll: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState({ width: 800, height: 500 });
-  const { deleteSelected, clearSelection } = useProjectStore();
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  usePianoRollShortcuts(() => setHelpOpen(true));
 
   // Resize observer
   useEffect(() => {
@@ -27,18 +30,6 @@ export const PianoRoll: React.FC = () => {
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'SELECT') return;
-      if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); }
-      if (e.key === 'Escape') { clearSelection(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [deleteSelected, clearSelection]);
 
   const rollHeight = Math.max(MIN_ROLL_HEIGHT, dims.height - VELOCITY_HEIGHT);
   const canvasWidth = Math.max(1, dims.width - KEYBOARD_WIDTH);
@@ -60,6 +51,7 @@ export const PianoRoll: React.FC = () => {
           <VelocityLane width={canvasWidth} height={VELOCITY_HEIGHT} />
         </div>
       </div>
+      <ShortcutsHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 };

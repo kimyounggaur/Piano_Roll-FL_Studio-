@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { tickToX, xToTick, pitchToY, yToPitch, clamp, rectsIntersect } from '../../utils/geometry';
 import { snapUnitToTicks } from '../../utils/time';
+import { hasNoteAt, noteCellKey, notesUnder } from '../../utils/notes';
 import { isBlackKey, isInScale, snapPitchToScale, buildChord } from '../../utils/musicTheory';
 import type { Note } from '../../types/music';
 import { NOTE_COLOR_GROUPS } from '../../types/music';
@@ -10,7 +11,7 @@ const TOTAL_KEYS = 128;
 const RESIZE_HANDLE_PX = 6;
 
 interface DragState {
-  type: 'none' | 'draw' | 'move' | 'resize' | 'select-box';
+  type: 'none' | 'draw' | 'move' | 'resize' | 'select-box' | 'paint' | 'paint-erase';
   noteId?: string;
   trackId?: string;
   startX: number;
@@ -20,6 +21,11 @@ interface DragState {
   origDuration?: number;
   boxX2?: number;
   boxY2?: number;
+  // Paint state — keys of cells already painted this drag, and ids painted so
+  // they can be promoted to `selected` on mouseup.
+  paintedKeys?: Set<string>;
+  paintedIds?: string[];
+  paintAllowOverlap?: boolean;
 }
 
 interface Props {
@@ -39,6 +45,8 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
     setViewport, snapTickValue, totalTicks,
     moveSelectedNotes, duplicateSelectedNotesInPlace,
     resizeSelectedNotes, alignSelectedNotesEndTick,
+    bulkAddNotes, bulkRemoveNotes, setNotes,
+    beginTransaction, commitTransaction,
   } = useProjectStore();
 
   // Drag preview — deltas in tick/pitch space + last cursor coords for tooltip.
@@ -400,6 +408,53 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       const activeTrackId = project.activeTrackId ?? '';
       const additive = e.shiftKey || e.ctrlKey || e.metaKey;
 
+      // ── Paint tool: left = paint drag, right = erase drag ────────────
+      if (activeTool === 'paint') {
+        if (!activeTrackId) return;
+        const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
+        const cellTick = Math.max(0, Math.floor(rawTick / snapTicks) * snapTicks);
+        const cellPitch = clamp(pitch, 0, 127);
+        const activeTrack = project.tracks.find((t) => t.id === activeTrackId);
+        beginTransaction();
+
+        if (e.button === 2) {
+          // Right-drag erase — remove every note covering this cell.
+          drag.current = {
+            type: 'paint-erase',
+            startX: cx, startY: cy,
+            paintedKeys: new Set(),
+            paintedIds: [],
+          };
+          if (activeTrack) {
+            const targets = notesUnder(activeTrack.notes, cellTick, cellPitch);
+            if (targets.length) bulkRemoveNotes(activeTrackId, targets.map((n) => n.id));
+          }
+          return;
+        }
+
+        // Left-drag paint
+        const allowOverlap = e.shiftKey;
+        const paintedKeys = new Set<string>();
+        const paintedIds: string[] = [];
+        const key = noteCellKey(cellTick, cellPitch);
+        const collides = !allowOverlap && activeTrack && hasNoteAt(activeTrack.notes, cellTick, cellPitch);
+        if (!collides && cellTick < totalTicks()) {
+          const ids = bulkAddNotes(activeTrackId, [{
+            pitch: cellPitch, startTick: cellTick, durationTicks: snapTicks,
+            velocity: 100,
+          }]);
+          paintedKeys.add(key);
+          paintedIds.push(...ids);
+        }
+        drag.current = {
+          type: 'paint',
+          startX: cx, startY: cy,
+          paintedKeys, paintedIds,
+          paintAllowOverlap: allowOverlap,
+        };
+        return;
+      }
+
       // ── Right-click anywhere → delete note under cursor (no-op on empty) ──
       if (e.button === 2) {
         if (hit) removeNote(hit.trackId, hit.note.id);
@@ -518,7 +573,8 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         drag.current = { type: 'draw', startX: cx, startY: cy };
       }
     },
-    [activeTool, vp, hitTest, snapTickValue, project, settings, totalTicks, addNote, removeNote, selectNote, clearSelection, duplicateSelectedNotesInPlace, getCursorPos]
+    [activeTool, vp, hitTest, snapTickValue, project, settings, totalTicks, addNote, removeNote, selectNote, clearSelection, duplicateSelectedNotesInPlace, getCursorPos,
+     bulkAddNotes, bulkRemoveNotes, beginTransaction]
   );
 
   const handleMouseMove = useCallback(
@@ -530,6 +586,46 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       if (d.type === 'select-box') {
         drag.current = { ...d, boxX2: cx, boxY2: cy };
         setSelectionRect((prev) => prev ? { ...prev, x2: cx, y2: cy } : prev);
+        return;
+      }
+
+      if (d.type === 'paint') {
+        const activeTrackId = project.activeTrackId ?? '';
+        if (!activeTrackId) return;
+        const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
+        const rawTick = xToTick(cx, vp);
+        const cellTick = Math.max(0, Math.floor(rawTick / snapTicks) * snapTicks);
+        const cellPitch = clamp(yToPitch(cy, vp), 0, 127);
+        if (cellTick >= totalTicks()) return;
+        const key = noteCellKey(cellTick, cellPitch);
+        if (d.paintedKeys!.has(key)) return;
+        if (!d.paintAllowOverlap) {
+          // Re-read the latest active-track notes so we don't collide with
+          // notes just painted by an earlier mousemove tick.
+          const at = useProjectStore.getState().activeTrack();
+          if (at && hasNoteAt(at.notes, cellTick, cellPitch)) {
+            d.paintedKeys!.add(key); // remember so we don't keep retrying
+            return;
+          }
+        }
+        const ids = bulkAddNotes(activeTrackId, [{
+          pitch: cellPitch, startTick: cellTick, durationTicks: snapTicks,
+          velocity: 100,
+        }]);
+        d.paintedKeys!.add(key);
+        d.paintedIds!.push(...ids);
+        return;
+      }
+
+      if (d.type === 'paint-erase') {
+        const activeTrackId = project.activeTrackId ?? '';
+        if (!activeTrackId) return;
+        const rawTick = xToTick(cx, vp);
+        const cellPitch = clamp(yToPitch(cy, vp), 0, 127);
+        const at = useProjectStore.getState().activeTrack();
+        if (!at) return;
+        const targets = notesUnder(at.notes, rawTick, cellPitch);
+        if (targets.length) bulkRemoveNotes(activeTrackId, targets.map((n) => n.id));
         return;
       }
 
@@ -570,12 +666,28 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         setResizePreview({ dT, shift: e.shiftKey, endTick, mx: cx, my: cy });
       }
     },
-    [vp, settings, snapTickValue, getCursorPos]
+    [vp, settings, snapTickValue, getCursorPos, project,
+     totalTicks, bulkAddNotes, bulkRemoveNotes]
   );
 
   const handleMouseUp = useCallback(
     () => {
       const d = drag.current;
+
+      // ── Paint: promote painted notes to `selected`, then commit txn ──
+      if (d.type === 'paint' || d.type === 'paint-erase') {
+        if (d.type === 'paint' && d.paintedIds && d.paintedIds.length > 0) {
+          const at = useProjectStore.getState().activeTrack();
+          if (at) {
+            const painted = new Set(d.paintedIds);
+            setNotes(at.id, at.notes.map((n) => ({ ...n, selected: painted.has(n.id) })));
+          }
+        }
+        commitTransaction();
+        drag.current = { type: 'none', startX: 0, startY: 0 };
+        return;
+      }
+
       // Commit move preview (if any) atomically
       if (d.type === 'move' && movePreview && (movePreview.dT !== 0 || movePreview.dP !== 0)) {
         moveSelectedNotes(movePreview.dP, movePreview.dT);
@@ -614,7 +726,8 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
     },
     [vp, movePreview, moveSelectedNotes,
      resizePreview, resizeSelectedNotes, alignSelectedNotesEndTick,
-     selectionRect, selectNotesInRect, clearSelection]
+     selectionRect, selectNotesInRect, clearSelection,
+     setNotes, commitTransaction]
   );
 
   // Scroll with mouse wheel

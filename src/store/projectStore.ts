@@ -121,6 +121,11 @@ const DEFAULT_VIEWPORT: PianoRollViewport = {
 const LS_KEY = 'rolllab_project';
 
 // ═══════════════════════════════════════════════════════════════════
+//  History (undo/redo)
+// ═══════════════════════════════════════════════════════════════════
+const MAX_HISTORY = 100;
+
+// ═══════════════════════════════════════════════════════════════════
 //  Pure helpers (no store access — easy to unit-test)
 // ═══════════════════════════════════════════════════════════════════
 
@@ -216,6 +221,14 @@ interface ProjectStore {
   deleteNote: (trackId: TrackId, noteId: NoteId) => void;
   updateNote: (trackId: TrackId, noteId: NoteId, partial: Partial<Note>) => void;
   setNotes: (trackId: TrackId, notes: Note[]) => void;
+  /**
+   * Append many notes at once. Generates fresh ids and returns them in input order.
+   * Used by Paint Tool / paste / import flows that produce groups of notes.
+   * Wrap in a transaction to keep a long paint drag as a single undo entry.
+   */
+  bulkAddNotes: (trackId: TrackId, notes: Array<Omit<Note, 'id'>>) => NoteId[];
+  /** Remove every note whose id appears in `ids` from `trackId`. */
+  bulkRemoveNotes: (trackId: TrackId, ids: NoteId[]) => void;
 
   // ── notes (selection) ────────────────────────────────────────────
   /**
@@ -320,6 +333,32 @@ interface ProjectStore {
   importJSON: (json: string) => void;
   /** Alias for importJSON. */
   importProjectJson: (json: string) => void;
+
+  // ── history (undo/redo) ──────────────────────────────────────────
+  /** @internal Past project snapshots — oldest first, newest last. */
+  _undoStack: Project[];
+  /** @internal Snapshots produced by undo, ready to redo. */
+  _redoStack: Project[];
+  /** @internal Snapshot captured at beginTransaction(); commit flushes it. */
+  _transactionSnapshot: Project | null;
+  /** @internal While true, edit actions skip pushing per-step history. */
+  _inTransaction: boolean;
+  /**
+   * Open a multi-step edit (e.g. drag). Snapshots the current project once.
+   * Subsequent edits during the transaction do NOT push individual entries;
+   * `commitTransaction()` flushes the original snapshot as a single entry.
+   */
+  beginTransaction: () => void;
+  /** Close the open transaction and record one undo entry if state changed. */
+  commitTransaction: () => void;
+  /** Abort the open transaction, restoring the snapshot. */
+  cancelTransaction: () => void;
+  /** Pop one entry from the undo stack and push current state onto redo. */
+  undo: () => void;
+  /** Pop one entry from the redo stack and push current state onto undo. */
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -356,27 +395,36 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   // ── project ────────────────────────────────────────────────────
-  setProjectName: (name) =>
-    set((s) => ({ project: { ...s.project, name } })),
+  setProjectName: (name) => {
+    pushHistory(get, set);
+    set((s) => ({ project: { ...s.project, name } }));
+  },
 
-  updateSettings: (partial) =>
+  updateSettings: (partial) => {
+    pushHistory(get, set);
     set((s) => ({
       project: { ...s.project, settings: { ...s.project.settings, ...partial } },
-    })),
+    }));
+  },
 
-  setBpm: (bpm) =>
+  setBpm: (bpm) => {
+    pushHistory(get, set);
     set((s) => ({
       project: { ...s.project, settings: { ...s.project.settings, bpm: Math.max(1, Math.min(999, bpm)) } },
-    })),
+    }));
+  },
 
-  setSnapUnit: (unit) =>
+  setSnapUnit: (unit) => {
+    pushHistory(get, set);
     set((s) => ({
       project: { ...s.project, settings: { ...s.project.settings, snapUnit: unit } },
-    })),
+    }));
+  },
 
   setSnapTicks: (ticks) => {
     const { ppq } = get().project.settings;
     const unit = ticksToSnapValue(ticks, ppq);
+    pushHistory(get, set);
     set((s) => ({
       project: { ...s.project, settings: { ...s.project.settings, snapUnit: unit } },
     }));
@@ -385,13 +433,16 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   setTool: (tool) => set({ activeTool: tool }),
   setActiveTool: (tool) => set({ activeTool: tool }),
 
-  setScale: (root, scaleName) =>
+  setScale: (root, scaleName) => {
+    pushHistory(get, set);
     set((s) => ({
       project: { ...s.project, settings: { ...s.project.settings, scaleRoot: root, scaleName } },
-    })),
+    }));
+  },
 
   // ── tracks ─────────────────────────────────────────────────────
-  addTrack: () =>
+  addTrack: () => {
+    pushHistory(get, set);
     set((s) => {
       const track = makeTrack(`트랙 ${s.project.tracks.length + 1}`, s.project.tracks.length);
       return {
@@ -401,46 +452,56 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           activeTrackId: track.id,
         },
       };
-    }),
+    });
+  },
 
-  removeTrack: (id) =>
+  removeTrack: (id) => {
+    if (get().project.tracks.length <= 1) return; // never remove last track
+    pushHistory(get, set);
     set((s) => {
-      if (s.project.tracks.length <= 1) return s; // never remove last track
       const tracks = s.project.tracks.filter((t) => t.id !== id);
       const activeTrackId =
         s.project.activeTrackId === id ? (tracks[0]?.id ?? null) : s.project.activeTrackId;
       return { project: { ...s.project, tracks, activeTrackId } };
-    }),
+    });
+  },
 
   setActiveTrack: (id) =>
     set((s) => ({ project: { ...s.project, activeTrackId: id } })),
 
-  updateTrack: (id, partial) =>
+  updateTrack: (id, partial) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
         tracks: s.project.tracks.map((t) => t.id === id ? { ...t, ...partial } : t),
       },
-    })),
+    }));
+  },
 
-  toggleTrackMute: (id) =>
+  toggleTrackMute: (id) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
         tracks: s.project.tracks.map((t) => t.id === id ? { ...t, muted: !t.muted } : t),
       },
-    })),
+    }));
+  },
 
-  toggleTrackSolo: (id) =>
+  toggleTrackSolo: (id) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
         tracks: s.project.tracks.map((t) => t.id === id ? { ...t, solo: !t.solo } : t),
       },
-    })),
+    }));
+  },
 
   // ── notes (individual) ─────────────────────────────────────────
-  addNote: (trackId, note) =>
+  addNote: (trackId, note) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -448,9 +509,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           ...notes, { selected: false, ...note, id: nanoid() },
         ]),
       },
-    })),
+    }));
+  },
 
-  removeNote: (trackId, noteId) =>
+  removeNote: (trackId, noteId) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -458,12 +521,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           notes.filter((n) => n.id !== noteId)
         ),
       },
-    })),
+    }));
+  },
 
   deleteNote: (trackId, noteId) => get().removeNote(trackId, noteId),
 
   updateNote: (trackId, noteId, partial) => {
     const { totalTicks, snapTicks } = get();
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -478,13 +543,47 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     }));
   },
 
-  setNotes: (trackId, notes) =>
+  setNotes: (trackId, notes) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
         tracks: s.project.tracks.map((t) => t.id === trackId ? { ...t, notes } : t),
       },
-    })),
+    }));
+  },
+
+  bulkAddNotes: (trackId: TrackId, incoming: Array<Omit<Note, 'id'>>): NoteId[] => {
+    if (incoming.length === 0) return [];
+    pushHistory(get, set);
+    const withIds: Note[] = incoming.map((n) => ({
+      selected: false,
+      ...n,
+      id: nanoid(),
+    }));
+    const ids = withIds.map((n) => n.id);
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateTrackNotes(s.project.tracks, trackId, (notes) => [...notes, ...withIds]),
+      },
+    }));
+    return ids;
+  },
+
+  bulkRemoveNotes: (trackId: TrackId, ids: NoteId[]) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    pushHistory(get, set);
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateTrackNotes(s.project.tracks, trackId, (notes) =>
+          notes.filter((n) => !idSet.has(n.id))
+        ),
+      },
+    }));
+  },
 
   // ── notes (selection) ──────────────────────────────────────────
   selectNote: (trackId, noteId, additive) =>
@@ -547,7 +646,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       },
     })),
 
-  deleteSelected: () =>
+  deleteSelected: () => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -556,13 +656,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           notes: t.notes.filter((n) => !n.selected),
         })),
       },
-    })),
+    }));
+  },
 
   moveSelectedNotes: (deltaPitch, deltaTicks) => {
     const { totalTicks, snapTicks } = get();
     const total = totalTicks();
     const minDur = snapTicks();
     const { scaleSnapEnabled, scaleName, scaleRoot } = get().project.settings;
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -588,6 +690,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   resizeSelectedNotes: (deltaTicks) => {
     const minDur = get().snapTicks();
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -604,6 +707,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   alignSelectedNotesEndTick: (endTick) => {
     const minDur = get().snapTicks();
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -621,6 +725,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   duplicateSelectedNotes: () => {
     const { project } = get();
     const barTicks = ticksPerBar(project.settings.ppq, project.settings.timeSignature);
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -647,6 +752,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   duplicateSelectedNotesInPlace: () => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -672,6 +778,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   setVelocityForSelectedNotes: (velocity) => {
     const vel = Math.max(1, Math.min(127, velocity));
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -683,6 +790,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   quantizeSelectedNotes: (gridTicks, strength, quantizeDuration = false) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -694,6 +802,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   humanizeSelectedNotes: (timingAmountTicks, velocityAmount, seed) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -712,6 +821,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   strumSelectedNotes: (amountTicks, direction) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -730,6 +840,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   randomizeVelocitySelectedNotes: (minVelocity, maxVelocity, seed) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -745,6 +856,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   scaleVelocitySelectedNotes: (amount) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -759,24 +871,29 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     }));
   },
 
-  muteSelectedNotes: () =>
+  muteSelectedNotes: () => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
         tracks: updateAllNotes(s.project.tracks, (n) => n.selected ? { ...n, muted: true } : n),
       },
-    })),
+    }));
+  },
 
-  unmuteSelectedNotes: () =>
+  unmuteSelectedNotes: () => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
         tracks: updateAllNotes(s.project.tracks, (n) => n.selected ? { ...n, muted: false } : n),
       },
-    })),
+    }));
+  },
 
   setColorGroupForSelectedNotes: (group) => {
     const g = Math.max(0, Math.min(15, Math.round(group)));
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -786,6 +903,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   arpeggiateSelectedNotes: (pattern, stepTicks, repeatCount, replaceOriginals = true, seed) => {
+    pushHistory(get, set);
     set((s) => ({
       project: {
         ...s.project,
@@ -859,10 +977,91 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   importJSON: (json) => {
     try {
       const project = JSON.parse(json) as Project;
+      pushHistory(get, set);
       set({ project });
     } catch {
       console.error('Invalid project JSON');
     }
   },
   importProjectJson: (json) => get().importJSON(json),
+
+  // ── history (undo/redo) ────────────────────────────────────────
+  _undoStack: [],
+  _redoStack: [],
+  _transactionSnapshot: null,
+  _inTransaction: false,
+
+  beginTransaction: () => {
+    const { _inTransaction, project } = get();
+    if (_inTransaction) return; // nested begins ignored
+    set({ _transactionSnapshot: project, _inTransaction: true });
+  },
+
+  commitTransaction: () => {
+    const { _transactionSnapshot, _undoStack, project, _inTransaction } = get();
+    if (!_inTransaction) return;
+    if (_transactionSnapshot && _transactionSnapshot !== project) {
+      const next = [..._undoStack, _transactionSnapshot];
+      if (next.length > MAX_HISTORY) next.splice(0, next.length - MAX_HISTORY);
+      set({ _undoStack: next, _redoStack: [] });
+    }
+    set({ _transactionSnapshot: null, _inTransaction: false });
+  },
+
+  cancelTransaction: () => {
+    const { _transactionSnapshot } = get();
+    if (_transactionSnapshot) {
+      set({ project: _transactionSnapshot });
+    }
+    set({ _transactionSnapshot: null, _inTransaction: false });
+  },
+
+  undo: () => {
+    const { _undoStack, _redoStack, project } = get();
+    if (_undoStack.length === 0) return;
+    const prev = _undoStack[_undoStack.length - 1];
+    const nextRedo = [..._redoStack, project];
+    if (nextRedo.length > MAX_HISTORY) nextRedo.splice(0, nextRedo.length - MAX_HISTORY);
+    set({
+      project: prev,
+      _undoStack: _undoStack.slice(0, -1),
+      _redoStack: nextRedo,
+      _transactionSnapshot: null,
+      _inTransaction: false,
+    });
+  },
+
+  redo: () => {
+    const { _undoStack, _redoStack, project } = get();
+    if (_redoStack.length === 0) return;
+    const next = _redoStack[_redoStack.length - 1];
+    const nextUndo = [..._undoStack, project];
+    if (nextUndo.length > MAX_HISTORY) nextUndo.splice(0, nextUndo.length - MAX_HISTORY);
+    set({
+      project: next,
+      _redoStack: _redoStack.slice(0, -1),
+      _undoStack: nextUndo,
+      _transactionSnapshot: null,
+      _inTransaction: false,
+    });
+  },
+
+  canUndo: () => get()._undoStack.length > 0,
+  canRedo: () => get()._redoStack.length > 0,
 }));
+
+// ═══════════════════════════════════════════════════════════════════
+//  History helper — used by every editing action above
+//  Records the *current* project to the undo stack and clears redo.
+//  No-op while a transaction is open (one snapshot recorded at commit).
+// ═══════════════════════════════════════════════════════════════════
+function pushHistory(
+  get: () => ProjectStore,
+  set: (partial: Partial<ProjectStore>) => void,
+): void {
+  const { _inTransaction, _undoStack, project } = get();
+  if (_inTransaction) return;
+  const next = [..._undoStack, project];
+  if (next.length > MAX_HISTORY) next.splice(0, next.length - MAX_HISTORY);
+  set({ _undoStack: next, _redoStack: [] });
+}
