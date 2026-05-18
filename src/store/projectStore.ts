@@ -219,6 +219,12 @@ interface ProjectStore {
    */
   resizeSelectedNotes: (deltaTicks: number) => void;
   /**
+   * Set every selected note's end tick (= startTick + durationTicks) to the
+   * same target value. Used by Shift-resize so multiple notes line up at
+   * the same release point. Minimum duration is `snapTicks`.
+   */
+  alignSelectedNotesEndTick: (endTick: number) => void;
+  /**
    * Copy all selected notes and offset them by one bar.
    * Originals are deselected; copies are selected.
    */
@@ -512,6 +518,22 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           notes: t.notes.map((n) => {
             if (!n.selected) return n;
             return { ...n, durationTicks: Math.max(minDur, n.durationTicks + deltaTicks) };
+          }),
+        })),
+      },
+    }));
+  },
+
+  alignSelectedNotesEndTick: (endTick) => {
+    const minDur = get().snapTicks();
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => ({
+          ...t,
+          notes: t.notes.map((n) => {
+            if (!n.selected) return n;
+            return { ...n, durationTicks: Math.max(minDur, endTick - n.startTick) };
           }),
         })),
       },

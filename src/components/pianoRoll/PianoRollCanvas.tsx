@@ -6,7 +6,7 @@ import { isBlackKey, isInScale, snapPitchToScale } from '../../utils/musicTheory
 import type { Note } from '../../types/music';
 
 const TOTAL_KEYS = 128;
-const RESIZE_HANDLE_PX = 8;
+const RESIZE_HANDLE_PX = 6;
 
 interface DragState {
   type: 'none' | 'draw' | 'move' | 'resize' | 'select-box';
@@ -34,9 +34,10 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   const drag = useRef<DragState>({ type: 'none', startX: 0, startY: 0 });
   const {
     project, viewport, activeTool,
-    addNote, removeNote, updateNote, selectNote, clearSelection,
+    addNote, removeNote, selectNote, clearSelection,
     setViewport, snapTickValue, totalTicks,
     moveSelectedNotes, duplicateSelectedNotesInPlace,
+    resizeSelectedNotes, alignSelectedNotesEndTick,
   } = useProjectStore();
 
   // Drag preview — deltas in tick/pitch space + last cursor coords for tooltip.
@@ -45,6 +46,14 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   // reflects the in-flight move without committing it to the store every frame.
   const [movePreview, setMovePreview] = useState<
     { dT: number; dP: number; mx: number; my: number } | null
+  >(null);
+
+  // Resize preview — live drag state, committed on mouseup.
+  //   dT     : per-note duration delta (used when !shift)
+  //   shift  : if true, align all selected to the same end tick
+  //   endTick: target end tick of the anchor note (origStartTick + origDuration + dT)
+  const [resizePreview, setResizePreview] = useState<
+    { dT: number; shift: boolean; endTick: number; mx: number; my: number } | null
   >(null);
   const { settings } = project;
   const vp = viewport;
@@ -169,8 +178,19 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         // Apply in-flight drag preview offset to selected notes
         const dT = note.selected && movePreview ? movePreview.dT : 0;
         const dP = note.selected && movePreview ? movePreview.dP : 0;
+
+        // Resize preview — selected notes get either a duration delta or
+        // an aligned end tick (Shift mode). Minimum duration enforced visually.
+        let previewDur = note.durationTicks;
+        if (note.selected && resizePreview) {
+          const minDur = snapUnitToTicks(settings.snapUnit, settings.ppq);
+          previewDur = resizePreview.shift
+            ? Math.max(minDur, resizePreview.endTick - note.startTick)
+            : Math.max(minDur, note.durationTicks + resizePreview.dT);
+        }
+
         const x = tickToX(note.startTick + dT, vp);
-        const w = note.durationTicks * vp.pixelsPerTick;
+        const w = previewDur * vp.pixelsPerTick;
         const y = pitchToY(note.pitch + dP, vp);
         if (x + w < 0 || x > width) continue;
         const nw = Math.max(3, w - 1);
@@ -217,7 +237,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       ctx.fillRect(bx, by, bw, bh);
       ctx.setLineDash([]);
     }
-  }, [width, height, vp, project, settings, totalTicks, movePreview]);
+  }, [width, height, vp, project, settings, totalTicks, movePreview, resizePreview]);
 
   useEffect(() => { draw(); });
 
@@ -432,13 +452,21 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       if (d.type === 'resize' && d.noteId && d.trackId) {
         const dx = cx - d.startX;
         const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
+        // Ctrl/Cmd → bypass snap (matches move behavior)
+        const unsnap = e.ctrlKey || e.metaKey;
         const rawEndTick = d.origStartTick! + d.origDuration! + (dx / vp.pixelsPerTick);
-        const snappedEnd = snapTickValue(rawEndTick);
-        const newDur = Math.max(snapTicks, snappedEnd - d.origStartTick!);
-        updateNote(d.trackId, d.noteId, { durationTicks: newDur });
+        const snappedEnd = unsnap
+          ? Math.round(rawEndTick)
+          : snapTickValue(rawEndTick);
+        // Clamp end so anchor note can't go below its minimum duration
+        const minEnd = d.origStartTick! + snapTicks;
+        const endTick = Math.max(minEnd, snappedEnd);
+        const dT = endTick - (d.origStartTick! + d.origDuration!);
+
+        setResizePreview({ dT, shift: e.shiftKey, endTick, mx: cx, my: cy });
       }
     },
-    [vp, settings, snapTickValue, updateNote, getCursorPos]
+    [vp, settings, snapTickValue, getCursorPos]
   );
 
   const handleMouseUp = useCallback(
@@ -449,6 +477,16 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         moveSelectedNotes(movePreview.dP, movePreview.dT);
       }
       if (movePreview) setMovePreview(null);
+
+      // Commit resize preview
+      if (d.type === 'resize' && resizePreview) {
+        if (resizePreview.shift) {
+          alignSelectedNotesEndTick(resizePreview.endTick);
+        } else if (resizePreview.dT !== 0) {
+          resizeSelectedNotes(resizePreview.dT);
+        }
+      }
+      if (resizePreview) setResizePreview(null);
       if (d.type === 'select-box' && d.boxX2 !== undefined && d.boxY2 !== undefined) {
         const x1 = Math.min(d.startX, d.boxX2);
         const x2 = Math.max(d.startX, d.boxX2);
@@ -471,7 +509,8 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       }
       drag.current = { type: 'none', startX: 0, startY: 0 };
     },
-    [vp, project, selectNote, movePreview, moveSelectedNotes]
+    [vp, project, selectNote, movePreview, moveSelectedNotes,
+     resizePreview, resizeSelectedNotes, alignSelectedNotesEndTick]
   );
 
   // Scroll with mouse wheel
@@ -554,6 +593,27 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
           {formatMoveDelta(movePreview.dT, movePreview.dP, settings.ppq)}
         </div>
       )}
+      {resizePreview && (
+        <div
+          style={{
+            position: 'absolute',
+            left: clamp(resizePreview.mx + 12, 0, Math.max(0, width - 160)),
+            top:  clamp(resizePreview.my + 12, 0, Math.max(0, height - 28)),
+            pointerEvents: 'none',
+            background: 'rgba(14,15,12,0.92)',
+            color: 'var(--accent)',
+            border: '1px solid var(--accent-border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '4px 8px',
+            fontSize: 11,
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 10px rgba(0,0,0,0.35)',
+          }}
+        >
+          {formatResizeDelta(resizePreview, settings.ppq)}
+        </div>
+      )}
     </div>
   );
 };
@@ -572,4 +632,18 @@ function formatMoveDelta(dT: number, dP: number, ppq: number): string {
     parts.push(`${sign}${dP}반음`);
   }
   return parts.join(', ');
+}
+
+function formatResizeDelta(
+  rp: { dT: number; shift: boolean; endTick: number },
+  ppq: number,
+): string {
+  if (rp.shift) {
+    const beats = rp.endTick / ppq;
+    return `끝점 정렬 → ${beats.toFixed(beats % 1 === 0 ? 0 : 2)}박`;
+  }
+  if (rp.dT === 0) return '길이 0';
+  const beats = rp.dT / ppq;
+  const sign  = beats > 0 ? '+' : '';
+  return `길이 ${sign}${beats.toFixed(beats % 1 === 0 ? 0 : 2)}박`;
 }
