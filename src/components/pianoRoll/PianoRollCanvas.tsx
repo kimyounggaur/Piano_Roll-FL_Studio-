@@ -298,6 +298,13 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       const snappedTick = snapTickValue(rawTick);
       const pitch = yToPitch(cy, vp);
       const activeTrackId = project.activeTrackId ?? '';
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+
+      // ── Right-click anywhere → delete note under cursor (no-op on empty) ──
+      if (e.button === 2) {
+        if (hit) removeNote(hit.trackId, hit.note.id);
+        return;
+      }
 
       if (activeTool === 'erase') {
         if (hit) removeNote(hit.trackId, hit.note.id);
@@ -306,7 +313,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
 
       if (activeTool === 'select') {
         if (hit) {
-          selectNote(hit.trackId, hit.note.id, e.shiftKey);
+          selectNote(hit.trackId, hit.note.id, additive);
           drag.current = {
             type: 'move',
             noteId: hit.note.id,
@@ -317,7 +324,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
             origDuration: hit.note.durationTicks,
           };
         } else {
-          if (!e.shiftKey) clearSelection();
+          if (!additive) clearSelection();
           drag.current = { type: 'select-box', startX: cx, startY: cy, boxX2: cx, boxY2: cy };
         }
         return;
@@ -335,7 +342,8 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
             origDuration: hit.note.durationTicks,
           };
         } else {
-          // clicking existing note → start move
+          // clicking existing note → select + start move
+          selectNote(hit.trackId, hit.note.id, additive);
           drag.current = {
             type: 'move',
             noteId: hit.note.id,
@@ -347,7 +355,8 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
           };
         }
       } else {
-        // new note
+        // empty area on draw tool → deselect first (unless additive), then add note
+        if (!additive) clearSelection();
         const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
         const finalPitch = settings.scaleName !== 'none'
           ? snapPitchToScale(pitch, settings.scaleRoot, settings.scaleName)
@@ -480,6 +489,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
+        onContextMenu={(e) => e.preventDefault()}
       />
       <canvas
         ref={playheadCanvasRef}
