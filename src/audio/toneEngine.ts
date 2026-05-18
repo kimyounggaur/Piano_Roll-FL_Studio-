@@ -1,22 +1,307 @@
+// ═══════════════════════════════════════════════════════════════════
+//  toneEngine — Tone.js-based playback for a RollLab Project
+//
+//  Pure audio module. Knows nothing about React. The host UI calls
+//  initAudio() on the first user gesture (typically the Play button)
+//  and then drives the engine via playProject / pauseProject / stopProject.
+// ═══════════════════════════════════════════════════════════════════
+
 import * as Tone from 'tone';
-import type { Track } from '../types/music';
-import { tickToSeconds } from '../utils/time';
+import type { Project, Track, Note } from '../types/music';
+import { tickToSeconds, ticksPerBar } from '../utils/time';
 
-let synths: Map<string, Tone.PolySynth> = new Map();
+// ── State ──────────────────────────────────────────────────────────────────
+const synths: Map<string, Tone.PolySynth> = new Map();
 let metronomeSynth: Tone.MetalSynth | null = null;
-let scheduledEvents: number[] = [];
+let previewSynth: Tone.PolySynth | null = null;
+let scheduledEventIds: number[] = [];
+let audioReady = false;
 
-export function getOrCreateSynth(trackId: string): Tone.PolySynth {
-  if (!synths.has(trackId)) {
-    const synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 0.5 },
-    }).toDestination();
-    synths.set(trackId, synth);
-  }
-  return synths.get(trackId)!;
+// ─────────────────────────────────────────────────────────────────────────
+//  Lifecycle
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Must be called from inside a user-gesture handler (click, keydown) to
+ * satisfy browser autoplay policy. Idempotent — safe to call repeatedly.
+ */
+export async function initAudio(): Promise<void> {
+  if (audioReady) return;
+  await Tone.start();
+  audioReady = true;
 }
 
+/** Dispose every synth this engine has allocated. */
+export function disposeAudio(): void {
+  stopProject();
+  synths.forEach((s) => s.dispose());
+  synths.clear();
+  metronomeSynth?.dispose();
+  metronomeSynth = null;
+  previewSynth?.dispose();
+  previewSynth = null;
+  audioReady = false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Synth pool (one PolySynth per track)
+// ─────────────────────────────────────────────────────────────────────────
+
+function getSynth(track: Track): Tone.PolySynth {
+  let s = synths.get(track.id);
+  if (!s) {
+    s = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'triangle' },
+      envelope:   { attack: 0.005, decay: 0.1, sustain: 0.3, release: 0.5 },
+    }).toDestination();
+    synths.set(track.id, s);
+  }
+  // Apply per-track gain / pan each schedule (cheap)
+  s.volume.value = linearToDb(track.volume);
+  return s;
+}
+
+function linearToDb(v: number): number {
+  if (v <= 0) return -Infinity;
+  return 20 * Math.log10(v);
+}
+
+function getOrCreateMetronome(): Tone.MetalSynth {
+  if (!metronomeSynth) {
+    metronomeSynth = new Tone.MetalSynth({
+      envelope:        { attack: 0.001, decay: 0.1, release: 0.01 },
+      resonance:       4000,
+      modulationIndex: 32,
+      octaves:         1.5,
+    }).toDestination();
+    metronomeSynth.volume.value = -12;
+  }
+  return metronomeSynth;
+}
+
+function getOrCreatePreviewSynth(): Tone.PolySynth {
+  if (!previewSynth) {
+    previewSynth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'triangle' },
+      envelope:   { attack: 0.005, decay: 0.1, sustain: 0.3, release: 0.4 },
+    }).toDestination();
+  }
+  return previewSynth;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Track filtering — solo / mute precedence
+// ─────────────────────────────────────────────────────────────────────────
+
+function playableTracks(tracks: Track[]): Track[] {
+  const soloActive = tracks.some((t) => t.solo);
+  return tracks.filter((t) => !t.muted && (!soloActive || t.solo));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Scheduling
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Wipe every event we've scheduled and reset the event-id list. */
+function clearScheduled(): void {
+  // Transport.cancel(0) removes every scheduled event past time 0. We pair
+  // it with our local id list so callers that introspect can see "nothing
+  // pending" too.
+  Tone.getTransport().cancel(0);
+  scheduledEventIds = [];
+}
+
+/**
+ * Schedule every audible note in the project on the Transport timeline.
+ * Coordinates are in absolute transport seconds — looping is handled by
+ * Tone.Transport.loopStart / loopEnd, not by manual re-scheduling.
+ */
+export function scheduleNotes(
+  project: Project,
+  opts: { onTick?: (tick: number) => void } = {},
+): void {
+  const { bpm, ppq } = project.settings;
+  for (const track of playableTracks(project.tracks)) {
+    const synth = getSynth(track);
+    for (const note of track.notes) {
+      if (note.muted) continue;
+      const t0  = tickToSeconds(note.startTick, bpm, ppq);
+      const dur = Math.max(0.02, tickToSeconds(note.durationTicks, bpm, ppq));
+      const freq = Tone.Frequency(note.pitch, 'midi').toFrequency();
+      const vel  = clamp01(note.velocity / 127);
+      const id = Tone.getTransport().schedule((time) => {
+        synth.triggerAttackRelease(freq, dur, time, vel);
+      }, t0);
+      scheduledEventIds.push(id);
+    }
+  }
+
+  // Playhead update — fires on every 32nd-note tick of the Transport.
+  if (opts.onTick) {
+    const onTickCb = opts.onTick;
+    const tickId = Tone.getTransport().scheduleRepeat((time) => {
+      const seconds = Tone.getTransport().seconds;
+      const tick = Math.max(0, Math.floor((seconds / (60 / bpm)) * ppq));
+      Tone.getDraw().schedule(() => onTickCb(tick), time);
+    }, '32n');
+    scheduledEventIds.push(tickId);
+  }
+}
+
+function scheduleMetronome(totalSeconds: number, bpm: number, tsNumerator: number): void {
+  const metro = getOrCreateMetronome();
+  const beatSeconds = 60 / bpm;
+  const beats = Math.ceil(totalSeconds / beatSeconds);
+  for (let b = 0; b < beats; b++) {
+    const t = b * beatSeconds;
+    const accent = b % tsNumerator === 0;
+    const id = Tone.getTransport().schedule((time) => {
+      metro.triggerAttackRelease('16n', time, accent ? 0.9 : 0.4);
+    }, t);
+    scheduledEventIds.push(id);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Transport control
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface PlayOptions {
+  /** Where to start playback (in ticks). Default 0. */
+  startTick?: number;
+  /** Total tick length of the arrangement (used for non-loop end + metronome). */
+  totalTicks?: number;
+  /** Loop the transport. Uses project.settings.loopStart/EndTick if set. */
+  loop?: boolean;
+  /** Click track on/off. */
+  metronome?: boolean;
+  /** Fires roughly every 32nd note with the current playhead tick. */
+  onTick?: (tick: number) => void;
+  /** Fires when non-looping playback reaches the end. */
+  onStop?: () => void;
+}
+
+/**
+ * Play the project from the given tick (or 0). All scheduled events from a
+ * previous call are cleared first. Caller must have invoked initAudio()
+ * once in response to a user gesture.
+ */
+export async function playProject(project: Project, opts: PlayOptions = {}): Promise<void> {
+  await initAudio();
+
+  const { bpm, ppq, timeSignature, loopStartTick, loopEndTick } = project.settings;
+  const startTick  = opts.startTick  ?? 0;
+  const totalTicks = opts.totalTicks ?? barsToTotalTicks(project);
+
+  stopProject();
+
+  Tone.getTransport().bpm.value = bpm;
+  Tone.getTransport().PPQ = ppq;
+
+  // Schedule all notes (+ tick callback)
+  scheduleNotes(project, { onTick: opts.onTick });
+
+  // Metronome
+  if (opts.metronome) {
+    const totalSec = tickToSeconds(totalTicks, bpm, ppq);
+    scheduleMetronome(totalSec, bpm, timeSignature.numerator);
+  }
+
+  // Loop
+  if (opts.loop) {
+    const looped = loopEndTick > loopStartTick;
+    const ls = looped ? loopStartTick : 0;
+    const le = looped ? loopEndTick   : totalTicks;
+    Tone.getTransport().loop      = true;
+    Tone.getTransport().loopStart = tickToSeconds(ls, bpm, ppq);
+    Tone.getTransport().loopEnd   = tickToSeconds(le, bpm, ppq);
+  } else {
+    Tone.getTransport().loop = false;
+    // End-of-arrangement stop callback
+    if (opts.onStop) {
+      const endSec = tickToSeconds(totalTicks, bpm, ppq);
+      const stopCb = opts.onStop;
+      const id = Tone.getTransport().schedule((time) => {
+        Tone.getDraw().schedule(() => {
+          stopProject();
+          stopCb();
+        }, time);
+      }, Math.max(0, endSec - 0.001));
+      scheduledEventIds.push(id);
+    }
+  }
+
+  // Seek to startTick (in seconds) and go
+  Tone.getTransport().seconds = tickToSeconds(startTick, bpm, ppq);
+
+  Tone.getTransport().start();
+}
+
+/** Stop playback and clear all scheduled events. */
+export function stopProject(): void {
+  Tone.getTransport().stop();
+  clearScheduled();
+  Tone.getTransport().loop = false;
+}
+
+/** Pause playback without clearing scheduled events. resume with resumeProject(). */
+export function pauseProject(): void {
+  Tone.getTransport().pause();
+}
+
+/** Resume playback from the paused position. */
+export function resumeProject(): void {
+  Tone.getTransport().start();
+}
+
+/** Live BPM change. Affects already-scheduled events because Tone uses musical time. */
+export function setBpm(bpm: number): void {
+  Tone.getTransport().bpm.value = bpm;
+}
+
+// Legacy alias (some older code calls this).
+export const setTransportBPM = setBpm;
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Preview — single-note audition
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Play a single note immediately on the shared preview synth.
+ * Used by piano-keyboard clicks, note-creation feedback, etc.
+ * @param pitch       MIDI pitch 0–127
+ * @param velocity    1–127 (default 100)
+ * @param durationMs  release length in ms (default 250)
+ */
+export function previewNote(pitch: number, velocity = 100, durationMs = 250): void {
+  if (!audioReady) {
+    // First gesture hasn't happened yet — silently no-op rather than throw.
+    return;
+  }
+  const synth = getOrCreatePreviewSynth();
+  const freq  = Tone.Frequency(pitch, 'midi').toFrequency();
+  const vel   = clamp01(velocity / 127);
+  synth.triggerAttackRelease(freq, durationMs / 1000, undefined, vel);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+function barsToTotalTicks(project: Project): number {
+  return ticksPerBar(project.settings.ppq, project.settings.timeSignature)
+       * project.settings.bars;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Back-compat shims — keep older call sites working until they migrate.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** @deprecated use playProject + scheduleNotes */
 export async function startPlayback(
   tracks: Track[],
   bpm: number,
@@ -27,93 +312,29 @@ export async function startPlayback(
   onStop: () => void,
   loop: boolean,
   metronome: boolean,
-  tsNumerator: number
+  tsNumerator: number,
 ): Promise<void> {
-  await Tone.start();
-  stopPlayback();
-
-  Tone.getTransport().bpm.value = bpm;
-  Tone.getTransport().stop();
-  Tone.getTransport().cancel();
-
-  const totalSeconds = tickToSeconds(totalTicks, bpm, ppq);
-
-  // Schedule notes
-  for (const track of tracks) {
-    if (track.muted) continue;
-    const synth = getOrCreateSynth(track.id);
-    for (const note of track.notes) {
-      if (note.startTick < startTick) continue;
-      const noteStart = tickToSeconds(note.startTick - startTick, bpm, ppq);
-      const noteDur = Math.max(0.05, tickToSeconds(note.durationTicks, bpm, ppq));
-      const freq = Tone.Frequency(note.pitch, 'midi').toFrequency();
-      const vel = note.velocity / 127;
-      const id = Tone.getTransport().schedule((time) => {
-        synth.triggerAttackRelease(freq, noteDur, time, vel);
-      }, noteStart);
-      scheduledEvents.push(id);
-    }
-  }
-
-  // Metronome
-  if (metronome) {
-    metronomeSynth = new Tone.MetalSynth({
-      envelope: { attack: 0.001, decay: 0.1, release: 0.01 },
-      resonance: 4000, modulationIndex: 32, octaves: 1.5,
-    }).toDestination();
-    metronomeSynth.volume.value = -12;
-    const beatSeconds = 60 / bpm;
-    const beats = Math.ceil(totalSeconds / beatSeconds);
-    for (let b = 0; b < beats; b++) {
-      const t = b * beatSeconds;
-      const id = Tone.getTransport().schedule((time) => {
-        metronomeSynth?.triggerAttackRelease('16n', time, b % tsNumerator === 0 ? 0.9 : 0.4);
-      }, t);
-      scheduledEvents.push(id);
-    }
-  }
-
-  // Playhead ticker (every ~50ms resolution)
-  const tickInterval = Tone.getTransport().scheduleRepeat((time) => {
-    const elapsed = Tone.getTransport().seconds;
-    const tick = startTick + Math.floor((elapsed / (60 / bpm)) * ppq);
-    Tone.getDraw().schedule(() => onTick(tick), time);
-  }, '32n');
-  scheduledEvents.push(tickInterval);
-
-  // Loop / end
-  if (loop) {
-    Tone.getTransport().loop = true;
-    Tone.getTransport().loopStart = 0;
-    Tone.getTransport().loopEnd = totalSeconds;
-  } else {
-    Tone.getTransport().loop = false;
-    const stopId = Tone.getTransport().schedule(() => {
-      Tone.getDraw().schedule(() => onStop(), Tone.now());
-    }, totalSeconds - 0.001);
-    scheduledEvents.push(stopId);
-  }
-
-  Tone.getTransport().start();
+  // Build a minimal Project shape the new API expects
+  const fakeProject: Project = {
+    name: '',
+    settings: {
+      bpm, ppq,
+      timeSignature: { numerator: tsNumerator, denominator: 4 },
+      bars: Math.ceil(totalTicks / ticksPerBar(ppq, { numerator: tsNumerator, denominator: 4 })),
+      loopStartTick: 0,
+      loopEndTick:   0,
+      snapUnit:      '1/16',
+      scaleRoot:     0,
+      scaleName:     'none',
+    },
+    tracks,
+    activeTrackId: tracks[0]?.id ?? null,
+  };
+  await playProject(fakeProject, { startTick, totalTicks, loop, metronome, onTick, onStop });
 }
 
-export function stopPlayback(): void {
-  Tone.getTransport().stop();
-  Tone.getTransport().cancel();
-  scheduledEvents = [];
-  metronomeSynth?.dispose();
-  metronomeSynth = null;
-}
+/** @deprecated use stopProject */
+export const stopPlayback = stopProject;
 
-export function pausePlayback(): void {
-  Tone.getTransport().pause();
-}
-
-export function setTransportBPM(bpm: number): void {
-  Tone.getTransport().bpm.value = bpm;
-}
-
-export function disposeSynths(): void {
-  synths.forEach((s) => s.dispose());
-  synths = new Map();
-}
+// Note import is used by typing inside scheduleNotes
+export type { Note };

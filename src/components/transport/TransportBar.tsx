@@ -1,10 +1,13 @@
 import React, { useCallback } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import {
-  startPlayback,
-  stopPlayback,
+  initAudio,
+  playProject,
+  pauseProject,
+  stopProject,
+  setBpm as setEngineBpm,
 } from '../../audio/toneEngine';
-import { formatTickAsBarBeat } from '../../utils/time';
+import { formatTickFull } from '../../utils/time';
 import type { SnapUnit } from '../../types/music';
 import './TransportBar.css';
 
@@ -19,33 +22,42 @@ export const TransportBar: React.FC = () => {
   const { settings } = project;
 
   const handlePlay = useCallback(async () => {
-    if (isPlaying) {
-      stopPlayback();
-      setIsPlaying(false);
-      return;
-    }
+    // First gesture — unblock browser autoplay before any audio call
+    await initAudio();
+    if (isPlaying) return; // already playing — no-op (use Pause / Stop)
     setIsPlaying(true);
-    await startPlayback(
-      project.tracks,
-      settings.bpm,
-      settings.ppq,
-      playheadTick,
-      totalTicks(),
-      (tick) => setPlayheadTick(tick),
-      () => { setIsPlaying(false); setPlayheadTick(0); },
-      isLooping,
-      isMetronome,
-      settings.timeSignature.numerator,
-    );
-  }, [isPlaying, isLooping, isMetronome, project, settings, playheadTick, totalTicks, setIsPlaying, setPlayheadTick]);
+    await playProject(project, {
+      startTick:  playheadTick,
+      totalTicks: totalTicks(),
+      loop:       isLooping,
+      metronome:  isMetronome,
+      onTick:     (tick) => setPlayheadTick(tick),
+      onStop:     () => { setIsPlaying(false); setPlayheadTick(0); },
+    });
+  }, [isPlaying, isLooping, isMetronome, project, playheadTick, totalTicks, setIsPlaying, setPlayheadTick]);
+
+  const handlePause = useCallback(() => {
+    if (!isPlaying) return;
+    pauseProject();
+    setIsPlaying(false);
+    // playheadTick is preserved so the next Play call resumes from here.
+  }, [isPlaying, setIsPlaying]);
 
   const handleStop = useCallback(() => {
-    stopPlayback();
+    stopProject();
     setIsPlaying(false);
     setPlayheadTick(0);
   }, [setIsPlaying, setPlayheadTick]);
 
-  const barPos = formatTickAsBarBeat(playheadTick, settings.timeSignature, settings.ppq);
+  // BPM change → push to both store and live engine
+  const handleBpmChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const bpm = Number(e.target.value);
+    if (!Number.isFinite(bpm) || bpm <= 0) return;
+    updateSettings({ bpm });
+    setEngineBpm(bpm);
+  }, [updateSettings]);
+
+  const posText  = formatTickFull(playheadTick, settings.timeSignature, settings.ppq);
 
   return (
     <div className="transport-bar">
@@ -53,9 +65,18 @@ export const TransportBar: React.FC = () => {
         <button
           className={`transport-btn${isPlaying ? ' active' : ''}`}
           onClick={handlePlay}
-          title={isPlaying ? '일시정지 (스페이스)' : '재생 (스페이스)'}
+          disabled={isPlaying}
+          title="재생 (스페이스)"
         >
-          {isPlaying ? '⏸' : '▶'}
+          ▶
+        </button>
+        <button
+          className="transport-btn"
+          onClick={handlePause}
+          disabled={!isPlaying}
+          title="일시정지"
+        >
+          ⏸
         </button>
         <button className="transport-btn" onClick={handleStop} title="정지">
           ■
@@ -79,7 +100,13 @@ export const TransportBar: React.FC = () => {
       <div className="transport-divider" />
 
       <div className="transport-section transport-position">
-        <span className="position-display">{barPos}</span>
+        <span className="position-display">{posText}</span>
+        <span
+          className="tick-display"
+          style={{ marginLeft: 8, fontSize: 10, color: 'var(--text-muted)' }}
+        >
+          틱 {playheadTick}
+        </span>
       </div>
 
       <div className="transport-divider" />
@@ -91,7 +118,7 @@ export const TransportBar: React.FC = () => {
           className="transport-input bpm-input"
           value={settings.bpm}
           min={20} max={300}
-          onChange={(e) => updateSettings({ bpm: Number(e.target.value) })}
+          onChange={handleBpmChange}
         />
       </div>
 
