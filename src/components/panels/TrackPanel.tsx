@@ -100,17 +100,8 @@ export const TrackPanel: React.FC = () => {
             {/* Volume + Pan — only on the active track to keep the panel tidy */}
             {track.id === activeTrackId && (
               <div
+                className="track-mix-controls"
                 onClick={(e) => e.stopPropagation()}
-                style={{
-                  width: '100%',
-                  display: 'grid',
-                  gridTemplateColumns: '40px 1fr 30px',
-                  gap: 6,
-                  alignItems: 'center',
-                  marginTop: 6,
-                  fontSize: 10,
-                  color: 'var(--text-muted)',
-                }}
               >
                 <span>볼륨</span>
                 <input
