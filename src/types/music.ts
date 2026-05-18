@@ -48,6 +48,16 @@ export interface Note {
   channel?: number;
   /** Back-reference to the owning track. Redundant but useful in flat queries. */
   trackId?: TrackId;
+  /** Per-note stereo pan (-1 left .. +1 right). Default 0. (#41) */
+  pan?: number;
+  /** Per-note pitch micro-tuning in cents (-100 .. +100). Default 0. (#41) */
+  finePitch?: number;
+  /** Release velocity (1..127). Default 64. (#41) */
+  releaseVelocity?: number;
+  /** Membership in a locked edit group — all members move/delete together. (#43) */
+  groupId?: string;
+  /** Articulation/glide kind. Default 'normal'. (#48) */
+  noteKind?: 'normal' | 'slide' | 'portamento';
 }
 
 
@@ -84,6 +94,10 @@ export interface Track {
   /** −1.0 (full left) to +1.0 (full right). */
   pan: number;
   notes: Note[];
+  /** Track behaviour: melodic (default) or drum step-sequencer (#62). */
+  trackKind?: 'melodic' | 'drum';
+  /** Drum-kit slot definitions for `trackKind === 'drum'`. */
+  drumKit?: Array<{ pitch: number; name: string }>;
 }
 
 
@@ -112,7 +126,7 @@ export type SnapUnit = SnapValue;
  * - slice    : click on a note to split it at the cursor position
  * - stamp    : place a chord or pattern defined in InspectorPanel
  */
-export type PianoRollTool = 'select' | 'draw' | 'paint' | 'erase' | 'slice' | 'stamp';
+export type PianoRollTool = 'select' | 'draw' | 'paint' | 'erase' | 'slice' | 'stamp' | 'mute';
 
 // Legacy alias so existing components keep working.
 export type EditTool = PianoRollTool;
@@ -180,6 +194,22 @@ export interface ProjectSettings {
   // ── Scale snap ─────────────────────────────────────────────────────
   /** Force new notes and dragged notes onto the active scale. */
   scaleSnapEnabled: boolean;
+
+  // ── Ghost notes (#47) ─────────────────────────────────────────────
+  /** If true, ghost notes from other tracks can be clicked & edited inline. */
+  ghostEditable?: boolean;
+  /** Track ids visible as ghosts. 'all' = every non-active visible track. */
+  ghostVisibleTrackIds?: TrackId[] | 'all';
+
+  // ── Performance mode (#56) ────────────────────────────────────────
+  /** Allow live editing during playback (reschedules notes on every change). */
+  performanceMode?: boolean;
+
+  // ── MIDI input routing (#57) ──────────────────────────────────────
+  /** Channel 1..16 → colorGroup 0..15 mapping. */
+  midiChannelColorMap?: Record<number, number>;
+  /** When true, MIDI noteOn channel determines the new note's colorGroup. */
+  midiChannelThrough?: boolean;
 
   // ── Chord stamp ────────────────────────────────────────────────────
   /** Chord type used when the stamp tool is active. */
@@ -280,11 +310,48 @@ export type Viewport = PianoRollViewport;
 //  Project root
 // ═══════════════════════════════════════════════════════════════════
 
+export interface TimeMarker {
+  id: string;
+  tick: Tick;
+  name: string;
+  color?: string;
+}
+
+export interface TimeSignatureChange {
+  tick: Tick;
+  numerator: number;
+  denominator: number;
+}
+
+export interface Pattern {
+  id: string;
+  name: string;
+  color?: string;
+  lengthBars: number;
+  tracks: Track[];
+}
+
 export interface Project {
   name: string;
   settings: ProjectSettings;
   tracks: Track[];
   activeTrackId: TrackId | null;
+  /** Named time markers shown on the marker lane (#44). */
+  markers?: TimeMarker[];
+  /** Per-region time-signature changes (#59). [{ tick:0, ... }] is default. */
+  timeSignatureChanges?: TimeSignatureChange[];
+  /** Pattern containers (#53). When omitted, project runs as single arrangement. */
+  patterns?: Pattern[];
+  activePatternId?: string;
+  /** Optional reference waveform overlay (#52). */
+  backgroundWaveform?: {
+    /** Base64-encoded Float32Array packed into a JSON-safe payload. */
+    peaksBase64: string;
+    bucketCount: number;
+    sampleRate: number;
+    lengthSec: number;
+    offsetTick: number;
+  };
 }
 
 

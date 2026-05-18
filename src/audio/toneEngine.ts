@@ -36,6 +36,8 @@ export function disposeAudio(): void {
   stopProject();
   synths.forEach((s) => s.dispose());
   synths.clear();
+  glideSynths.forEach((s) => s.dispose());
+  glideSynths.clear();
   metronomeSynth?.dispose();
   metronomeSynth = null;
   previewSynth?.dispose();
@@ -44,7 +46,7 @@ export function disposeAudio(): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-//  Synth pool (one PolySynth per track)
+//  Synth pool (one PolySynth per track + one MonoSynth for glides)
 // ─────────────────────────────────────────────────────────────────────────
 
 function getSynth(track: Track): Tone.PolySynth {
@@ -57,6 +59,22 @@ function getSynth(track: Track): Tone.PolySynth {
     synths.set(track.id, s);
   }
   // Apply per-track gain / pan each schedule (cheap)
+  s.volume.value = linearToDb(track.volume);
+  return s;
+}
+
+// Dedicated glide voice per track — frequency.exponentialRampTo works on
+// MonoSynth in a way PolySynth doesn't expose. We allocate lazily.
+const glideSynths: Map<string, Tone.MonoSynth> = new Map();
+function getGlideSynth(track: Track): Tone.MonoSynth {
+  let s = glideSynths.get(track.id);
+  if (!s) {
+    s = new Tone.MonoSynth({
+      oscillator: { type: 'triangle' },
+      envelope:   { attack: 0.005, decay: 0.1, sustain: 0.6, release: 0.4 },
+    }).toDestination();
+    glideSynths.set(track.id, s);
+  }
   s.volume.value = linearToDb(track.volume);
   return s;
 }
@@ -118,19 +136,51 @@ function clearScheduled(): void {
  */
 export function scheduleNotes(
   project: Project,
-  opts: { onTick?: (tick: number) => void } = {},
+  opts: { onTick?: (tick: number) => void; fromSec?: number } = {},
 ): void {
   const { bpm, ppq } = project.settings;
+  const fromSec = opts.fromSec ?? 0;
   for (const track of playableTracks(project.tracks)) {
     const synth = getSynth(track);
+    // Pre-index slide notes by startTick so the target lookup is O(1).
+    const slidesByEnd = new Map<number, Note>();
+    for (const n of track.notes) {
+      if (n.noteKind === 'slide') {
+        slidesByEnd.set(n.startTick + n.durationTicks, n);
+      }
+    }
     for (const note of track.notes) {
       if (note.muted) continue;
+      if (note.noteKind === 'slide') {
+        scheduleSlideNote(track, note, project, fromSec);
+        continue;
+      }
       const t0  = tickToSeconds(note.startTick, bpm, ppq);
+      if (t0 < fromSec) continue;
       const dur = Math.max(0.02, tickToSeconds(note.durationTicks, bpm, ppq));
       const freq = Tone.Frequency(note.pitch, 'midi').toFrequency();
       const vel  = clamp01(note.velocity / 127);
+
+      // Portamento — temporarily set the synth's voice portamento so the
+      // glide into THIS note's pitch is audible. Reset afterwards so
+      // following notes don't inherit it.
+      const portamento = note.noteKind === 'portamento'
+        ? Math.min(0.15, dur * 0.3)
+        : 0;
+      // Slide consumes this note as its target; skip re-triggering on poly.
+      const consumed = slidesByEnd.has(note.startTick);
+
+      if (consumed) continue;
       const id = Tone.getTransport().schedule((time) => {
-        synth.triggerAttackRelease(freq, dur, time, vel);
+        if (portamento > 0) {
+          // PolySynth.set forwards to every voice — apply briefly.
+          synth.set({ portamento });
+          synth.triggerAttackRelease(freq, dur, time, vel);
+          // Reset after the attack envelope so future voices don't glide.
+          setTimeout(() => synth.set({ portamento: 0 }), 50);
+        } else {
+          synth.triggerAttackRelease(freq, dur, time, vel);
+        }
       }, t0);
       scheduledEventIds.push(id);
     }
@@ -146,6 +196,38 @@ export function scheduleNotes(
     }, '32n');
     scheduledEventIds.push(tickId);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Slide note — find the next normal note that the slide ends on,
+//  trigger attack at slide.start with slide.pitch, ramp to target pitch
+//  over the slide window, release after target.duration.
+//  If no target overlaps, the slide note plays as a regular monotone.
+// ─────────────────────────────────────────────────────────────────────
+function scheduleSlideNote(track: Track, slide: Note, project: Project, fromSec: number): void {
+  const { bpm, ppq } = project.settings;
+  const t0 = tickToSeconds(slide.startTick, bpm, ppq);
+  if (t0 < fromSec) return;
+  const slideDur = Math.max(0.01, tickToSeconds(slide.durationTicks, bpm, ppq));
+  // Target = note that begins exactly at slide.endTick (with small tolerance).
+  const slideEnd = slide.startTick + slide.durationTicks;
+  const target = track.notes.find((n) =>
+    n.id !== slide.id &&
+    n.noteKind !== 'slide' &&
+    Math.abs(n.startTick - slideEnd) <= Math.max(1, ppq / 32),
+  );
+  const startFreq = Tone.Frequency(slide.pitch, 'midi').toFrequency();
+  const endFreq   = Tone.Frequency(target?.pitch ?? slide.pitch, 'midi').toFrequency();
+  const tailDur   = target ? Math.max(0.02, tickToSeconds(target.durationTicks, bpm, ppq)) : 0;
+  const vel       = clamp01(slide.velocity / 127);
+  const glide     = getGlideSynth(track);
+  const id = Tone.getTransport().schedule((time) => {
+    glide.frequency.setValueAtTime(startFreq, time);
+    glide.triggerAttack(startFreq, time, vel);
+    glide.frequency.exponentialRampTo(endFreq, slideDur, time);
+    glide.triggerRelease(time + slideDur + tailDur);
+  }, t0);
+  scheduledEventIds.push(id);
 }
 
 function scheduleMetronome(totalSeconds: number, bpm: number, tsNumerator: number): void {
@@ -257,6 +339,21 @@ export function resumeProject(): void {
 /** Live BPM change. Affects already-scheduled events because Tone uses musical time. */
 export function setBpm(bpm: number): void {
   Tone.getTransport().bpm.value = bpm;
+}
+
+/**
+ * Performance-mode re-scheduling — cancels every event in the future and
+ * re-schedules notes from `tick` onward. Loop / metronome / tick-callback
+ * are NOT re-installed — caller is responsible for re-arming those if
+ * they want to keep firing.
+ */
+export function rescheduleFromTick(project: Project, tick: number): void {
+  const { bpm, ppq } = project.settings;
+  const fromSec = tickToSeconds(tick, bpm, ppq);
+  // Drop events that haven't fired yet; keep transport running.
+  Tone.getTransport().cancel(fromSec);
+  scheduledEventIds = scheduledEventIds.filter(() => false);
+  scheduleNotes(project, { fromSec });
 }
 
 // Legacy alias (some older code calls this).

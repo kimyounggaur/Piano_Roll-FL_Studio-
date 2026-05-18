@@ -5,6 +5,7 @@ import { VelocityLane } from './VelocityLane';
 import { ToolBar } from './ToolBar';
 import { ShortcutsHelp } from './ShortcutsHelp';
 import { MiniMap } from './MiniMap';
+import { MarkerLane } from './MarkerLane';
 import { usePianoRollShortcuts } from '../../hooks/usePianoRollShortcuts';
 import './PianoRoll.css';
 
@@ -33,13 +34,18 @@ export const PianoRoll: React.FC = () => {
   }, []);
 
   const MINIMAP_HEIGHT = 56;
-  const rollHeight = Math.max(MIN_ROLL_HEIGHT, dims.height - VELOCITY_HEIGHT - MINIMAP_HEIGHT);
+  const MARKER_HEIGHT  = 18;
+  const rollHeight = Math.max(MIN_ROLL_HEIGHT, dims.height - VELOCITY_HEIGHT - MINIMAP_HEIGHT - MARKER_HEIGHT);
   const canvasWidth = Math.max(1, dims.width - KEYBOARD_WIDTH);
 
   return (
     <div className="piano-roll-wrapper">
       <ToolBar />
       <div className="piano-roll-body" ref={containerRef}>
+        <div style={{ display: 'flex', height: MARKER_HEIGHT, borderBottom: '1px solid var(--border)' }}>
+          <div style={{ width: KEYBOARD_WIDTH, flexShrink: 0, background: '#0e0e1c' }} />
+          <MarkerLane width={canvasWidth} height={MARKER_HEIGHT} />
+        </div>
         <div className="piano-roll-main" style={{ height: rollHeight }}>
           <PianoKeyboard height={rollHeight} />
           <div className="piano-roll-canvas-wrapper">

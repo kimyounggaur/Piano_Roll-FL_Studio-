@@ -7,6 +7,7 @@ import {
 } from '../../utils/geometry';
 import { snapUnitToTicks } from '../../utils/time';
 import { hasNoteAt, noteCellKey, notesUnder } from '../../utils/notes';
+import { NotePropertiesPopup } from './NotePropertiesPopup';
 import { isBlackKey, isInScale, snapPitchToScale, buildChord } from '../../utils/musicTheory';
 import type { Note, PianoRollTool } from '../../types/music';
 import { NOTE_COLOR_GROUPS } from '../../types/music';
@@ -41,10 +42,15 @@ const TOOL_CURSORS: Record<PianoRollTool, string> = {
     <path d="M13 5v11.2a3.6 3.6 0 1 1-1.7-3V5h1.7z" fill="#9fe870" stroke="#163300" stroke-width="1.2"/>
     <path d="M13 5c2.2 2.4 4.8 2.2 6.3 4.5" fill="none" stroke="#e8ebe6" stroke-width="1.6" stroke-linecap="round"/>
   `, 13, 16, 'copy'),
+  mute: makeSvgCursor(`
+    <path d="M5 11h4.2L15 6.8v14.4L9.2 17H5z" fill="#9fe870" stroke="#163300" stroke-width="1.3" stroke-linejoin="round"/>
+    <path d="M18 10l5 5M23 10l-5 5" stroke="#ffc091" stroke-width="2" stroke-linecap="round"/>
+    <path d="M18 10l5 5M23 10l-5 5" stroke="#163300" stroke-width="0.8" stroke-linecap="round"/>
+  `, 15, 14, 'not-allowed'),
 };
 
 interface DragState {
-  type: 'none' | 'draw' | 'move' | 'resize' | 'select-box' | 'paint' | 'paint-erase';
+  type: 'none' | 'draw' | 'move' | 'resize' | 'resize-left' | 'select-box' | 'paint' | 'paint-erase' | 'slice' | 'mute' | 'pan';
   noteId?: string;
   trackId?: string;
   startX: number;
@@ -59,6 +65,12 @@ interface DragState {
   paintedKeys?: Set<string>;
   paintedIds?: string[];
   paintAllowOverlap?: boolean;
+  // Mute drag — toggle state captured from the first note clicked, applied
+  // to every subsequent note crossed during the drag.
+  muteTargetValue?: boolean;
+  mutedIds?: Set<string>;
+  // Slice drag — tracks which cells were already sliced this drag.
+  slicedTicks?: Set<number>;
 }
 
 interface Props {
@@ -80,6 +92,8 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
     resizeSelectedNotes, alignSelectedNotesEndTick,
     bulkAddNotes, bulkRemoveNotes, setNotes,
     beginTransaction, commitTransaction,
+    toggleNoteMuted, sliceNoteAt, sliceNotesAtTick,
+    resizeSelectedNotesLeft, alignSelectedNotesStartTick,
   } = useProjectStore();
 
   // Drag preview — deltas in tick/pitch space + last cursor coords for tooltip.
@@ -398,8 +412,10 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   }, [drawPlayhead]);
 
   // ── Hit testing ────────────────────────────────────────────────────
+  //   isResize     → cursor is on the RIGHT handle (existing behaviour)
+  //   isResizeLeft → cursor is on the LEFT handle  (#39)
   const hitTest = useCallback(
-    (cx: number, cy: number): { note: Note; trackId: string; isResize: boolean } | null => {
+    (cx: number, cy: number): { note: Note; trackId: string; isResize: boolean; isResizeLeft: boolean } | null => {
       const activeTrack = project.tracks.find((t) => t.id === project.activeTrackId);
       if (!activeTrack) return null;
       // Reverse so top-drawn note hits first
@@ -410,8 +426,11 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         const ny = pitchToY(note.pitch, vp);
         const nh = vp.keyHeight - 2;
         if (cx >= nx && cx <= nx + nw && cy >= ny + 1 && cy <= ny + nh) {
-          const isResize = cx >= nx + nw - RESIZE_HANDLE_PX;
-          return { note, trackId: activeTrack.id, isResize };
+          // For very short notes, prefer right-resize over left-resize so
+          // duration can still be dragged.
+          const isResize = nw > 2 * RESIZE_HANDLE_PX && cx >= nx + nw - RESIZE_HANDLE_PX;
+          const isResizeLeft = nw > 2 * RESIZE_HANDLE_PX && cx <= nx + RESIZE_HANDLE_PX && !isResize;
+          return { note, trackId: activeTrack.id, isResize, isResizeLeft };
         }
       }
       return null;
@@ -428,13 +447,25 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
     []
   );
 
-  // Double-click on a ghost note → activate its track (option-gated).
+  // ── Note Properties popup (active-track double-click) ─────────────
+  const [propsPopup, setPropsPopup] = useState<{ noteId: string; trackId: string; x: number; y: number } | null>(null);
+
+  // Double-click — active note opens properties; ghost note activates track.
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (!settings.ghostDoubleClickActivates || !settings.ghostNotesVisible) return;
       const { cx, cy } = getCursorPos(e);
+      const hit = hitTest(cx, cy);
+      if (hit) {
+        setPropsPopup({
+          noteId: hit.note.id,
+          trackId: hit.trackId,
+          x: e.clientX + 12,
+          y: e.clientY + 12,
+        });
+        return;
+      }
+      if (!settings.ghostDoubleClickActivates || !settings.ghostNotesVisible) return;
       const soloActive = project.tracks.some((tr) => tr.solo);
-      // Iterate non-active, visible tracks in reverse so top-drawn note wins
       const visibleGhostTracks = project.tracks
         .filter((t) => t.id !== project.activeTrackId
           && !t.muted
@@ -454,7 +485,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         }
       }
     },
-    [settings.ghostDoubleClickActivates, settings.ghostNotesVisible, project, vp, getCursorPos, setActiveTrack],
+    [settings.ghostDoubleClickActivates, settings.ghostNotesVisible, project, vp, getCursorPos, setActiveTrack, hitTest],
   );
 
   const handleMouseDown = useCallback(
@@ -466,6 +497,18 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       const pitch = yToPitch(cy, vp);
       const activeTrackId = project.activeTrackId ?? '';
       const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+
+      // ── Middle-mouse pan (#55) — start drag-to-pan regardless of tool ──
+      if (e.button === 1) {
+        e.preventDefault();
+        drag.current = {
+          type: 'pan',
+          startX: cx, startY: cy,
+          origStartTick: vp.scrollX,
+          origPitch: vp.scrollY,
+        };
+        return;
+      }
 
       // ── Paint tool: left = paint drag, right = erase drag ────────────
       if (activeTool === 'paint') {
@@ -514,6 +557,42 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         return;
       }
 
+      // ── Slice tool — single click splits, Shift+drag slices everything ──
+      if (activeTool === 'slice') {
+        if (!activeTrackId) return;
+        const unsnap = e.altKey || e.ctrlKey || e.metaKey;
+        const sliceTick = unsnap ? Math.round(rawTick) : snappedTick;
+        beginTransaction();
+        if (e.shiftKey) {
+          // Drum-style multi-slice — slice every note crossing this tick.
+          sliceNotesAtTick(activeTrackId, sliceTick);
+          drag.current = {
+            type: 'slice', startX: cx, startY: cy,
+            slicedTicks: new Set([sliceTick]),
+          };
+        } else if (hit) {
+          sliceNoteAt(hit.trackId, hit.note.id, sliceTick);
+          drag.current = { type: 'slice', startX: cx, startY: cy, slicedTicks: new Set([sliceTick]) };
+        } else {
+          drag.current = { type: 'slice', startX: cx, startY: cy, slicedTicks: new Set() };
+        }
+        return;
+      }
+
+      // ── Mute tool — click/drag toggles note.muted ─────────────────────
+      if (activeTool === 'mute') {
+        if (!hit) return;
+        beginTransaction();
+        const newMuted = !hit.note.muted;
+        toggleNoteMuted(hit.trackId, hit.note.id, newMuted);
+        drag.current = {
+          type: 'mute', startX: cx, startY: cy,
+          muteTargetValue: newMuted,
+          mutedIds: new Set([hit.note.id]),
+        };
+        return;
+      }
+
       // ── Right-click anywhere → delete note under cursor (no-op on empty) ──
       if (e.button === 2) {
         if (hit) removeNote(hit.trackId, hit.note.id);
@@ -541,6 +620,20 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
             };
             return;
           }
+          if (hit.isResizeLeft) {
+            if (!hit.note.selected) {
+              selectNote(hit.trackId, hit.note.id, additive);
+            }
+            drag.current = {
+              type: 'resize-left',
+              noteId: hit.note.id,
+              trackId: hit.trackId,
+              startX: cx, startY: cy,
+              origStartTick: hit.note.startTick,
+              origDuration: hit.note.durationTicks,
+            };
+            return;
+          }
 
           // Ensure the clicked note is part of the selection.  If it was
           // already selected, leave the existing multi-selection intact so
@@ -548,9 +641,14 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
           if (!hit.note.selected) {
             selectNote(hit.trackId, hit.note.id, additive);
           }
-          // Alt-drag: clone the selection in place; the copies are now the
-          // selection and will follow the drag.
-          if (e.altKey) duplicateSelectedNotesInPlace();
+          // Alt-drag OR Shift-drag-on-already-selected: clone in place.
+          // (Plain Shift+click that JUST changed selection is additive-select
+          //  and should NOT clone — only clone when the note was already in
+          //  the selection, matching FL's Shift-drag-to-copy gesture.)
+          const wasAlreadySelected = hit.note.selected;
+          if (e.altKey || (e.shiftKey && wasAlreadySelected)) {
+            duplicateSelectedNotesInPlace();
+          }
           drag.current = {
             type: 'move',
             noteId: hit.note.id,
@@ -615,6 +713,18 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
             origStartTick: hit.note.startTick,
             origDuration: hit.note.durationTicks,
           };
+        } else if (hit.isResizeLeft) {
+          if (!hit.note.selected) {
+            selectNote(hit.trackId, hit.note.id, additive);
+          }
+          drag.current = {
+            type: 'resize-left',
+            noteId: hit.note.id,
+            trackId: hit.trackId,
+            startX: cx, startY: cy,
+            origStartTick: hit.note.startTick,
+            origDuration: hit.note.durationTicks,
+          };
         } else {
           // clicking existing note on draw tool → select + start move
           if (!hit.note.selected) {
@@ -663,6 +773,16 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       if (d.type === 'select-box') {
         drag.current = { ...d, boxX2: cx, boxY2: cy };
         setSelectionRect((prev) => prev ? { ...prev, x2: cx, y2: cy } : prev);
+        return;
+      }
+
+      if (d.type === 'pan') {
+        const dx = cx - d.startX;
+        const dy = cy - d.startY;
+        setViewport({
+          scrollX: Math.max(0, (d.origStartTick ?? 0) - dx),
+          scrollY: Math.max(0, (d.origPitch ?? 0) - dy),
+        });
         return;
       }
 
@@ -742,6 +862,65 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
 
         setResizePreview({ dT, shift: e.shiftKey, endTick, mx: cx, my: cy });
       }
+
+      // ── Left-resize drag — store delta as negative duration change so we
+      // can reuse the existing tooltip / preview while shift means align-start.
+      if (d.type === 'resize-left' && d.noteId && d.trackId) {
+        const dx = cx - d.startX;
+        const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
+        const unsnap = e.ctrlKey || e.metaKey;
+        const rawStart = d.origStartTick! + (dx / vp.pixelsPerTick);
+        const snappedStart = unsnap ? Math.round(rawStart) : snapTickValue(rawStart);
+        const maxStart = d.origStartTick! + d.origDuration! - snapTicks;
+        const startTick = Math.min(maxStart, Math.max(0, snappedStart));
+        const dT = startTick - d.origStartTick!;
+        setResizePreview({ dT, shift: e.shiftKey, endTick: startTick, mx: cx, my: cy });
+      }
+
+      // ── Slice drag — slice every unique snapped tick crossed once. ──
+      if (d.type === 'slice') {
+        const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
+        const unsnap = e.altKey || e.ctrlKey || e.metaKey;
+        const rawTick = xToTick(cx, vp);
+        const sliceTick = unsnap ? Math.round(rawTick) : Math.round(rawTick / snapTicks) * snapTicks;
+        const activeTrackId = project.activeTrackId ?? '';
+        if (!activeTrackId) return;
+        if (!d.slicedTicks!.has(sliceTick)) {
+          d.slicedTicks!.add(sliceTick);
+          if (e.shiftKey) {
+            sliceNotesAtTick(activeTrackId, sliceTick);
+          } else {
+            const at = useProjectStore.getState().activeTrack();
+            if (at) {
+              for (const n of at.notes) {
+                if (n.startTick < sliceTick && n.startTick + n.durationTicks > sliceTick) {
+                  sliceNoteAt(activeTrackId, n.id, sliceTick);
+                  break;
+                }
+              }
+            }
+          }
+        }
+        return;
+      }
+
+      // ── Mute drag — apply captured target value to every note crossed.
+      if (d.type === 'mute') {
+        const at = useProjectStore.getState().activeTrack();
+        if (!at) return;
+        for (const n of at.notes) {
+          const nx = tickToX(n.startTick, vp);
+          const nw = Math.max(3, n.durationTicks * vp.pixelsPerTick - 1);
+          const ny = pitchToY(n.pitch, vp);
+          const nh = vp.keyHeight - 2;
+          const hit = cx >= nx && cx <= nx + nw && cy >= ny + 1 && cy <= ny + nh;
+          if (hit && !d.mutedIds!.has(n.id)) {
+            d.mutedIds!.add(n.id);
+            toggleNoteMuted(at.id, n.id, d.muteTargetValue);
+          }
+        }
+        return;
+      }
     },
     [vp, settings, snapTickValue, getCursorPos, project,
      totalTicks, bulkAddNotes, bulkRemoveNotes]
@@ -779,7 +958,23 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
           resizeSelectedNotes(resizePreview.dT);
         }
       }
+      // Commit left-resize preview
+      if (d.type === 'resize-left' && resizePreview) {
+        if (resizePreview.shift) {
+          alignSelectedNotesStartTick(resizePreview.endTick);
+        } else if (resizePreview.dT !== 0) {
+          resizeSelectedNotesLeft(resizePreview.dT);
+        }
+      }
       if (resizePreview) setResizePreview(null);
+
+      // ── Slice / Mute — already applied incrementally during drag, just
+      // commit the transaction so we get a single undo entry.
+      if (d.type === 'slice' || d.type === 'mute') {
+        commitTransaction();
+        drag.current = { type: 'none', startX: 0, startY: 0 };
+        return;
+      }
       if (d.type === 'select-box' && selectionRect) {
         const { x1: sx1, y1: sy1, x2: sx2, y2: sy2, additive: rectAdditive } = selectionRect;
         const dragged = Math.abs(sx2 - sx1) > 2 || Math.abs(sy2 - sy1) > 2;
@@ -815,6 +1010,24 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   const handleWheel = useCallback(
     (e: React.WheelEvent<HTMLCanvasElement>) => {
       e.preventDefault();
+      // ── Alt+wheel on a note → velocity ±1 (Shift+Alt: ±10) ─────────────
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        const { cx, cy } = getCursorPos(e as unknown as React.MouseEvent<HTMLCanvasElement>);
+        const hit = hitTest(cx, cy);
+        if (hit) {
+          const step = (e.shiftKey ? 10 : 1) * (e.deltaY < 0 ? 1 : -1);
+          const at = useProjectStore.getState().activeTrack();
+          if (!at) return;
+          // If hit note is selected, scale every selected note; otherwise just hit.
+          const targets = hit.note.selected ? at.notes.filter((n) => n.selected) : [hit.note];
+          for (const n of targets) {
+            const v = Math.max(1, Math.min(127, (n.velocity ?? 100) + step));
+            useProjectStore.getState().updateNote(at.id, n.id, { velocity: v });
+          }
+          return;
+        }
+        // No note under cursor — fall through to zoom-Y as before.
+      }
       if (e.ctrlKey || e.metaKey) {
         const factor = e.deltaY > 0 ? 0.9 : 1.1;
         const nextZoomX = clamp(vp.zoomX * factor, 0.25, 4);
@@ -943,6 +1156,15 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         >
           {formatResizeDelta(resizePreview, settings.ppq)}
         </div>
+      )}
+      {propsPopup && (
+        <NotePropertiesPopup
+          trackId={propsPopup.trackId}
+          noteId={propsPopup.noteId}
+          x={propsPopup.x}
+          y={propsPopup.y}
+          onClose={() => setPropsPopup(null)}
+        />
       )}
     </div>
   );

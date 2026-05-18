@@ -31,10 +31,8 @@ export const MidiInputPanel: React.FC = () => {
   useEffect(() => {
     const unsub = subscribe((e) => {
       if (e.type === 'noteOn') {
-        // Audio thumbnail — keep short so paddle-fast chord input doesn't
-        // accumulate long-tailed voices.
         previewNote(e.pitch, e.velocity, 250);
-        recordedNoteOn(e.pitch, e.velocity);
+        recordedNoteOn(e.pitch, e.velocity, e.channel);
       } else if (e.type === 'noteOff') {
         recordedNoteOff(e.pitch);
       }

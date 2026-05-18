@@ -35,6 +35,15 @@ export const SHORTCUT_CATALOG: ShortcutSpec[] = [
   { keys: 'E',               description: '지우기 툴',                group: 'tool' },
   { keys: 'X',               description: '자르기 툴',                group: 'tool' },
   { keys: 'C',               description: '스탬프 툴',                group: 'tool' },
+  { keys: 'T',               description: '음소거 툴',                group: 'tool' },
+  { keys: 'M',               description: '선택 노트 음소거 토글',    group: 'edit' },
+  { keys: 'Ctrl/⌘ + G',      description: 'Glue (인접 노트 병합)',    group: 'edit' },
+  { keys: 'Ctrl/⌘ + L',      description: 'Quick Legato',             group: 'edit' },
+  { keys: 'Shift + I',       description: '선택 반전',                group: 'edit' },
+  { keys: 'Z',               description: '선택 영역에 줌',           group: 'view' },
+  { keys: 'Shift + 1..5',    description: '줌 프리셋',                group: 'view' },
+  { keys: 'PageUp / PageDown', description: '가로 줌 단계',          group: 'view' },
+  { keys: 'Home / End',      description: '맨앞 / 맨끝 스크롤',       group: 'view' },
   { keys: 'Delete / ⌫',      description: '선택 노트 삭제',           group: 'edit' },
   { keys: 'Ctrl/⌘ + A',      description: '모든 노트 선택',           group: 'edit' },
   { keys: 'Ctrl/⌘ + D',      description: '선택 노트 복제',           group: 'edit' },
@@ -113,7 +122,7 @@ export function usePianoRollShortcuts(onShowHelp?: () => void): void {
       if (!mod && !e.shiftKey && !e.altKey) {
         const toolMap: Record<string, PianoRollTool> = {
           d: 'draw', p: 'paint', s: 'select',
-          e: 'erase', x: 'slice', c: 'stamp',
+          e: 'erase', x: 'slice', c: 'stamp', t: 'mute',
         };
         const tool = toolMap[key.toLowerCase()];
         if (tool) {
@@ -217,6 +226,77 @@ export function usePianoRollShortcuts(onShowHelp?: () => void): void {
         e.preventDefault();
         const { humanizeTimingTicks, humanizeVelocity } = project.settings;
         humanizeSelectedNotes(humanizeTimingTicks ?? 20, humanizeVelocity ?? 10);
+        return;
+      }
+
+      // ── Glue (Ctrl+G) / Quick Legato (Ctrl+L) ─────────────
+      if (mod && !e.shiftKey && (key === 'g' || key === 'G')) {
+        e.preventDefault();
+        useProjectStore.getState().glueSelectedNotes();
+        return;
+      }
+      if (mod && !e.shiftKey && (key === 'l' || key === 'L')) {
+        e.preventDefault();
+        useProjectStore.getState().legatoSelectedNotes(0);
+        return;
+      }
+
+      // ── Mute toggle selected (M) ────────────────────────
+      if (!mod && !e.shiftKey && !e.altKey && (key === 'm' || key === 'M')) {
+        e.preventDefault();
+        // If ANY selected note is unmuted, mute all; otherwise unmute all.
+        const tr = activeTrack();
+        if (!tr) return;
+        const anyUnmuted = tr.notes.some((n) => n.selected && !n.muted);
+        if (anyUnmuted) useProjectStore.getState().muteSelectedNotes();
+        else useProjectStore.getState().unmuteSelectedNotes();
+        return;
+      }
+
+      // ── Invert Selection (Shift+I) ──────────────────────
+      if (!mod && e.shiftKey && (key === 'I' || key === 'i')) {
+        e.preventDefault();
+        const tr = activeTrack();
+        if (!tr) return;
+        setNotes(tr.id, tr.notes.map((n) => ({ ...n, selected: !n.selected })));
+        return;
+      }
+
+      // ── Zoom to Selection / fit-all (Z) ─────────────────
+      if (!mod && !e.shiftKey && !e.altKey && (key === 'z' || key === 'Z')) {
+        e.preventDefault();
+        useProjectStore.getState().zoomToSelection();
+        return;
+      }
+
+      // ── Quick zoom presets (Shift+1..5) ─────────────────
+      if (!mod && e.shiftKey && ['1','2','3','4','5','!','@','#','$','%'].includes(key)) {
+        e.preventDefault();
+        const preset = ({ '1':'100','2':'50','3':'25','4':'far','5':'selection',
+                          '!':'100','@':'50','#':'25','$':'far','%':'selection'
+        } as Record<string, '100'|'50'|'25'|'far'|'selection'>)[key];
+        useProjectStore.getState().setZoomPreset(preset);
+        return;
+      }
+
+      // ── PageUp / PageDown — stepped horizontal zoom ─────
+      if (key === 'PageUp' || key === 'PageDown') {
+        e.preventDefault();
+        const factor = key === 'PageUp' ? 1.25 : 0.8;
+        if (e.shiftKey) {
+          setViewport({ zoomY: Math.max(0.75, Math.min(2, viewport.zoomY * factor)) });
+        } else {
+          setViewport({ zoomX: Math.max(0.25, Math.min(4, viewport.zoomX * factor)) });
+        }
+        return;
+      }
+      if (key === 'Home' || key === 'End') {
+        e.preventDefault();
+        if (key === 'Home') setViewport({ scrollX: 0 });
+        else {
+          const maxScrollX = Math.max(0, useProjectStore.getState().totalTicks() * viewport.pixelsPerTick - viewport.width);
+          setViewport({ scrollX: maxScrollX });
+        }
         return;
       }
 

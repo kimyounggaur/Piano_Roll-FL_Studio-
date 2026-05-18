@@ -232,6 +232,173 @@ export function scaleVelocity(notes: Note[], amount: number): Note[] {
   }));
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  Flip / Limit / Randomize (#49)
+// ═══════════════════════════════════════════════════════════════════
+
+/** Mirror notes around the centre of their bounding box. */
+export function flipNotes(notes: Note[], axis: 'pitch' | 'time'): Note[] {
+  if (notes.length === 0) return notes;
+  if (axis === 'pitch') {
+    const minP = Math.min(...notes.map((n) => n.pitch));
+    const maxP = Math.max(...notes.map((n) => n.pitch));
+    return notes.map((n) => ({ ...n, pitch: minP + maxP - n.pitch }));
+  }
+  const minT = Math.min(...notes.map((n) => n.startTick));
+  const maxT = Math.max(...notes.map((n) => n.startTick + n.durationTicks));
+  return notes.map((n) => ({
+    ...n,
+    startTick: Math.max(0, minT + maxT - (n.startTick + n.durationTicks)),
+  }));
+}
+
+/**
+ * Force every note's pitch into [minPitch, maxPitch].
+ * - mode 'clamp'  → snap to boundary
+ * - mode 'wrap'   → octave-shift up/down until inside
+ */
+export function limitNotes(
+  notes: Note[],
+  minPitch: number,
+  maxPitch: number,
+  mode: 'clamp' | 'wrap' = 'wrap',
+): Note[] {
+  if (maxPitch < minPitch) [minPitch, maxPitch] = [maxPitch, minPitch];
+  return notes.map((n) => {
+    let p = n.pitch;
+    if (mode === 'clamp') {
+      p = Math.max(minPitch, Math.min(maxPitch, p));
+    } else {
+      while (p > maxPitch) p -= 12;
+      while (p < minPitch) p += 12;
+      p = Math.max(0, Math.min(127, p));
+    }
+    return { ...n, pitch: p };
+  });
+}
+
+export interface RandomizeOptions {
+  pitchRangeSemitones?: number;
+  timeRangeTicks?: number;
+  velocityRange?: number;
+  durationRangeTicks?: number;
+  seed?: number;
+}
+
+/** Apply seeded random perturbations to each note. */
+export function randomizeNotes(notes: Note[], opts: RandomizeOptions): Note[] {
+  const rand = mulberry32(opts.seed ?? Date.now());
+  const pr = opts.pitchRangeSemitones ?? 0;
+  const tr = opts.timeRangeTicks ?? 0;
+  const vr = opts.velocityRange ?? 0;
+  const dr = opts.durationRangeTicks ?? 0;
+  const sym = (range: number) => (rand() * 2 - 1) * range;
+  return notes.map((n) => ({
+    ...n,
+    pitch:         Math.max(0, Math.min(127, n.pitch + Math.round(sym(pr)))),
+    startTick:     Math.max(0, n.startTick + Math.round(sym(tr))),
+    durationTicks: Math.max(1, n.durationTicks + Math.round(sym(dr))),
+    velocity:      clamp1to127(Math.round(n.velocity + sym(vr))),
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  LFO / Articulate (#60)
+// ═══════════════════════════════════════════════════════════════════
+
+export type LfoTarget   = 'velocity' | 'pitch' | 'duration' | 'pan';
+export type LfoWaveform = 'sine' | 'triangle' | 'square' | 'sawtooth';
+
+export interface LfoOptions {
+  target: LfoTarget;
+  waveform: LfoWaveform;
+  /** Period in ticks — distance between successive peaks of the LFO. */
+  periodTicks: number;
+  /** Variation amplitude (units differ per target — see below). */
+  depth: number;
+  /** Phase offset 0..1 of a single cycle. */
+  phase?: number;
+}
+
+function lfoValue(waveform: LfoWaveform, t: number): number {
+  // t ∈ [0, 1) — single cycle. Returns roughly [-1, 1].
+  const tau = t * 2 * Math.PI;
+  switch (waveform) {
+    case 'sine':     return Math.sin(tau);
+    case 'triangle': return 4 * Math.abs(t - 0.5) - 1;
+    case 'square':   return t < 0.5 ? 1 : -1;
+    case 'sawtooth': return 2 * t - 1;
+  }
+}
+
+/** Apply an LFO to the chosen target attribute of every note. */
+export function applyLfo(notes: Note[], opts: LfoOptions): Note[] {
+  const period = Math.max(1, opts.periodTicks);
+  const phase  = opts.phase ?? 0;
+  return notes.map((n) => {
+    const t = (((n.startTick / period) + phase) % 1 + 1) % 1;
+    const v = lfoValue(opts.waveform, t);
+    switch (opts.target) {
+      case 'velocity':
+        return { ...n, velocity: clamp1to127(Math.round(n.velocity + v * opts.depth)) };
+      case 'pitch':
+        return { ...n, pitch: Math.max(0, Math.min(127, n.pitch + Math.round(v * opts.depth))) };
+      case 'duration':
+        return { ...n, durationTicks: Math.max(1, Math.round(n.durationTicks * (1 + v * opts.depth))) };
+      case 'pan':
+        return { ...n, pan: Math.max(-1, Math.min(1, (n.pan ?? 0) + v * opts.depth)) };
+    }
+  });
+}
+
+export type ArticulatePattern = 'staccato' | 'tenuto' | 'accent' | 'marcato' | 'legato';
+
+/**
+ * Apply an articulation profile. Tenuto/legato need the FULL note list to find
+ * each note's successor; the function does its own grouping.
+ */
+export function articulateNotes(
+  notes: Note[],
+  pattern: ArticulatePattern,
+  intensity: number,
+): Note[] {
+  const i = Math.max(0, Math.min(1, intensity));
+  // For tenuto / legato we need per-pitch sorted neighbours.
+  if (pattern === 'tenuto' || pattern === 'legato') {
+    const byPitch = new Map<number, Note[]>();
+    for (const n of notes) {
+      const arr = byPitch.get(n.pitch) ?? [];
+      arr.push(n); byPitch.set(n.pitch, arr);
+    }
+    byPitch.forEach((arr) => arr.sort((a, b) => a.startTick - b.startTick));
+    return notes.map((n) => {
+      const peers = byPitch.get(n.pitch)!;
+      const idx = peers.findIndex((p) => p.id === n.id);
+      const next = peers[idx + 1];
+      if (!next) return n;
+      const newDur = Math.max(1, next.startTick - n.startTick - (pattern === 'legato' ? 0 : 2));
+      return { ...n, durationTicks: newDur };
+    });
+  }
+  return notes.map((n, idx) => {
+    switch (pattern) {
+      case 'staccato':
+        return { ...n, durationTicks: Math.max(1, Math.round(n.durationTicks * (1 - 0.6 * i))) };
+      case 'accent':
+        return idx % 2 === 0
+          ? { ...n, velocity: clamp1to127(Math.round(n.velocity + 25 * i)) }
+          : n;
+      case 'marcato':
+        return {
+          ...n,
+          velocity: clamp1to127(Math.round(n.velocity + 18 * i)),
+          durationTicks: Math.max(1, Math.round(n.durationTicks * (1 - 0.3 * i))),
+        };
+    }
+    return n;
+  });
+}
+
 function clamp1to127(v: number): number {
   return v < 1 ? 1 : v > 127 ? 127 : v;
 }

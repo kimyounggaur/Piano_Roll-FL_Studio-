@@ -137,26 +137,69 @@ export const PianoKeyboard: React.FC<Props> = ({ height }) => {
     [yToPitch, minPitch, maxPitch],
   );
 
-  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Drag state — last pitch we previewed during mousedown so glissando
+  // doesn't fire continuously on the same key.
+  const dragLastPitch = useRef<number | null>(null);
+
+  const isPlaying = useProjectStore((s) => s.isPlaying);
+  const playheadTick = useProjectStore((s) => s.playheadTick);
+  const activeTrack = useProjectStore((s) => s.activeTrack);
+  const addNote = useProjectStore((s) => s.addNote);
+  const snapTicks = useProjectStore((s) => s.snapTicks);
+  const setNotes = useProjectStore((s) => s.setNotes);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const pitch = getEventPitch(e);
-    if (pitch != null) playNote(pitch);
-  }, [getEventPitch, playNote]);
+    if (pitch == null) return;
+
+    if (e.button === 2) {
+      // Right-click: insert note at playhead on the active track
+      const tr = activeTrack();
+      if (!tr) return;
+      const snap = snapTicks();
+      addNote(tr.id, {
+        pitch, startTick: Math.round(playheadTick / snap) * snap,
+        durationTicks: snap, velocity: 100,
+      });
+      return;
+    }
+    if (e.shiftKey) {
+      // Select all notes of this pitch on the active track
+      const tr = activeTrack();
+      if (!tr) return;
+      setNotes(tr.id, tr.notes.map((n) => ({ ...n, selected: n.pitch === pitch ? true : n.selected })));
+      return;
+    }
+    // Preview disabled during playback (FL behavior).
+    if (!isPlaying) {
+      playNote(pitch);
+      dragLastPitch.current = pitch;
+    }
+  }, [getEventPitch, isPlaying, playNote, activeTrack, addNote, playheadTick, snapTicks, setNotes]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const pitch = getEventPitch(e);
     if (pitch !== hoverPitch) setHoverPitch(pitch);
-  }, [getEventPitch, hoverPitch]);
+    // Glissando: preview each new pitch while dragging.
+    if (pitch != null && dragLastPitch.current != null && pitch !== dragLastPitch.current && !isPlaying) {
+      playNote(pitch);
+      dragLastPitch.current = pitch;
+    }
+  }, [getEventPitch, hoverPitch, isPlaying, playNote]);
 
-  const handleMouseLeave = useCallback(() => setHoverPitch(null), []);
+  const handleMouseLeave = useCallback(() => { setHoverPitch(null); dragLastPitch.current = null; }, []);
+  const handleMouseUp   = useCallback(() => { dragLastPitch.current = null; }, []);
 
   return (
     <canvas
       ref={canvasRef}
       className="piano-keyboard-canvas"
       style={{ cursor: 'pointer', flexShrink: 0, display: 'block' }}
-      onClick={handleClick}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onContextMenu={(e) => e.preventDefault()}
     />
   );
 };
