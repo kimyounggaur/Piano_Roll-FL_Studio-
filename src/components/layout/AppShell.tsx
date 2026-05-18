@@ -18,7 +18,9 @@ export const AppShell: React.FC = () => {
   useAutosave(1000);
   usePerformanceModeReschedule();
 
-  const activeTrack = useProjectStore((s) => s.activeTrack());
+  const activeTrack = useProjectStore((s) =>
+    s.project.tracks.find((t) => t.id === s.project.activeTrackId) ?? null
+  );
   const isDrum = activeTrack?.trackKind === 'drum';
 
   const [tab, setTab] = useState<RightTab>('inspector');
