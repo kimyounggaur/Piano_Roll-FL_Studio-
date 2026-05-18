@@ -28,6 +28,9 @@ interface Props {
 
 export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const playheadCanvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastPlayheadRef = useRef<number>(-1);
   const drag = useRef<DragState>({ type: 'none', startX: 0, startY: 0 });
   const {
     project, viewport, activeTool,
@@ -85,6 +88,23 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       if (scaleName !== 'none' && !isInScale(pitch, scaleRoot, scaleName)) {
         ctx.fillStyle = 'rgba(0,0,0,0.18)';
         ctx.fillRect(0, y, width, vp.keyHeight);
+      }
+    }
+
+    // ── Loop region — Wise Green tinted band ──
+    const { loopStartTick, loopEndTick } = settings;
+    if (loopEndTick > loopStartTick) {
+      const lx1 = tickToX(loopStartTick, vp);
+      const lx2 = tickToX(loopEndTick,   vp);
+      if (lx2 > 0 && lx1 < width) {
+        const x1 = Math.max(0, lx1);
+        const x2 = Math.min(width, lx2);
+        ctx.fillStyle = 'rgba(159,232,112,0.07)';      // Wise Green band
+        ctx.fillRect(x1, 0, x2 - x1, height);
+        // Edge markers
+        ctx.fillStyle = 'rgba(159,232,112,0.55)';
+        if (lx1 >= 0 && lx1 < width) ctx.fillRect(lx1, 0, 1.5, height);
+        if (lx2 >= 0 && lx2 < width) ctx.fillRect(lx2 - 1.5, 0, 1.5, height);
       }
     }
 
@@ -168,19 +188,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       }
     }
 
-    // ── Playhead — Wise Danger Red ──
-    const { playheadTick } = useProjectStore.getState();
-    const px = tickToX(playheadTick, vp);
-    if (px >= 0 && px < width) {
-      ctx.strokeStyle = '#d03238';   // Wise Danger Red
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, height); ctx.stroke();
-      // Triangle head
-      ctx.fillStyle = '#d03238';
-      ctx.beginPath();
-      ctx.moveTo(px - 4, 0); ctx.lineTo(px + 4, 0); ctx.lineTo(px, 6);
-      ctx.closePath(); ctx.fill();
-    }
+    // Playhead is drawn on a separate overlay canvas via rAF (see drawPlayhead).
 
     // ── Selection box — Wise Warning Yellow ──
     const d = drag.current;
@@ -200,6 +208,56 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   }, [width, height, vp, project, settings, totalTicks]);
 
   useEffect(() => { draw(); });
+
+  // ── Playhead overlay — drawn on its own canvas via requestAnimationFrame ──
+  // The main canvas does NOT redraw on every playhead tick; only this overlay does.
+  const drawPlayhead = useCallback(() => {
+    const canvas = playheadCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+      canvas.width  = width  * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width  = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.scale(dpr, dpr);
+    } else {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    ctx.clearRect(0, 0, width, height);
+
+    const { playheadTick } = useProjectStore.getState();
+    const px = tickToX(playheadTick, vp);
+    if (px >= 0 && px < width) {
+      ctx.strokeStyle = '#d03238';   // Wise Danger Red
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, height); ctx.stroke();
+      // Triangle head
+      ctx.fillStyle = '#d03238';
+      ctx.beginPath();
+      ctx.moveTo(px - 4, 0); ctx.lineTo(px + 4, 0); ctx.lineTo(px, 6);
+      ctx.closePath(); ctx.fill();
+    }
+  }, [vp, width, height]);
+
+  useEffect(() => {
+    const tick = () => {
+      const ph = useProjectStore.getState().playheadTick;
+      if (ph !== lastPlayheadRef.current) {
+        lastPlayheadRef.current = ph;
+        drawPlayhead();
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    drawPlayhead();  // initial paint
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [drawPlayhead]);
 
   // ── Hit testing ────────────────────────────────────────────────────
   const hitTest = useCallback(
@@ -413,14 +471,20 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   );
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ cursor, display: 'block' }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMoveCursor}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onWheel={handleWheel}
-    />
+    <div style={{ position: 'relative', width, height }}>
+      <canvas
+        ref={canvasRef}
+        style={{ position: 'absolute', top: 0, left: 0, cursor, display: 'block' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMoveCursor}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+      />
+      <canvas
+        ref={playheadCanvasRef}
+        style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
+      />
+    </div>
   );
 };
