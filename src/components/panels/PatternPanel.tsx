@@ -1,4 +1,5 @@
 import React from 'react';
+import type { Pattern } from '../../types/music';
 import { useProjectStore } from '../../store/projectStore';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -8,8 +9,10 @@ import { useProjectStore } from '../../store/projectStore';
 //  of truth in MVP; future revision will swap project.tracks for
 //  patterns[active].tracks).
 // ═══════════════════════════════════════════════════════════════════
+const EMPTY_PATTERNS: Pattern[] = [];
+
 export const PatternPanel: React.FC = () => {
-  const patterns = useProjectStore((s) => s.project.patterns ?? []);
+  const patterns = useProjectStore((s) => s.project.patterns ?? EMPTY_PATTERNS);
   const activeId = useProjectStore((s) => s.project.activePatternId);
   const addPattern = useProjectStore((s) => s.addPattern);
   const removePattern = useProjectStore((s) => s.removePattern);
