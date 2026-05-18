@@ -29,12 +29,12 @@ export interface ShortcutSpec {
 
 export const SHORTCUT_CATALOG: ShortcutSpec[] = [
   { keys: 'Space',           description: '재생 / 정지',              group: 'transport' },
-  { keys: 'P',               description: 'Draw 툴',                  group: 'tool' },
-  { keys: 'V',               description: 'Select 툴',                group: 'tool' },
-  { keys: 'B',               description: 'Paint 툴',                 group: 'tool' },
-  { keys: 'E',               description: 'Erase 툴',                 group: 'tool' },
-  { keys: 'S',               description: 'Slice 툴',                 group: 'tool' },
-  { keys: 'C',               description: 'Stamp 툴',                 group: 'tool' },
+  { keys: 'D',               description: '그리기 툴',                group: 'tool' },
+  { keys: 'P',               description: '페인트 툴',                group: 'tool' },
+  { keys: 'S',               description: '선택 툴',                  group: 'tool' },
+  { keys: 'E',               description: '지우기 툴',                group: 'tool' },
+  { keys: 'X',               description: '자르기 툴',                group: 'tool' },
+  { keys: 'C',               description: '스탬프 툴',                group: 'tool' },
   { keys: 'Delete / ⌫',      description: '선택 노트 삭제',           group: 'edit' },
   { keys: 'Ctrl/⌘ + A',      description: '모든 노트 선택',           group: 'edit' },
   { keys: 'Ctrl/⌘ + D',      description: '선택 노트 복제',           group: 'edit' },
@@ -112,8 +112,8 @@ export function usePianoRollShortcuts(onShowHelp?: () => void): void {
       // ── tool selection (single letter, no modifier) ─────────
       if (!mod && !e.shiftKey && !e.altKey) {
         const toolMap: Record<string, PianoRollTool> = {
-          p: 'draw', v: 'select', b: 'paint',
-          e: 'erase', s: 'slice', c: 'stamp',
+          d: 'draw', p: 'paint', s: 'select',
+          e: 'erase', x: 'slice', c: 'stamp',
         };
         const tool = toolMap[key.toLowerCase()];
         if (tool) {
