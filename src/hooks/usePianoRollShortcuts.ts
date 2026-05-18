@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useProjectStore } from '../store/projectStore';
-import type { Note, PianoRollTool } from '../types/music';
+import type { Note, PianoRollTool, SnapValue } from '../types/music';
 
 // ═══════════════════════════════════════════════════════════════════
 //  Clipboard
@@ -58,6 +58,8 @@ export const SHORTCUT_CATALOG: ShortcutSpec[] = [
   { keys: '← / →',           description: '선택 노트 한 grid 이동',   group: 'move' },
   { keys: 'Shift + ← / →',   description: '선택 노트 길이 조절',      group: 'move' },
   { keys: 'Ctrl/⌘ + +/-',    description: '가로 줌 인/아웃',          group: 'view' },
+  { keys: '1-7',             description: '스냅: 1/1~1/64',           group: 'view' },
+  { keys: '8 / 9 / 0',      description: '스냅: 1/4T / 1/8T / 1/16T', group: 'view' },
   { keys: '?',               description: '단축키 도움말',            group: 'view' },
 ];
 
@@ -267,6 +269,19 @@ export function usePianoRollShortcuts(onShowHelp?: () => void): void {
         e.preventDefault();
         useProjectStore.getState().zoomToSelection();
         return;
+      }
+
+      // ── Snap unit (bare digit keys 1-0, no modifier) ────
+      if (!mod && !e.shiftKey && !e.altKey) {
+        const snapMap: Record<string, SnapValue> = {
+          '1': '1/1', '2': '1/2', '3': '1/4', '4': '1/8', '5': '1/16',
+          '6': '1/32', '7': '1/64', '8': '1/4T', '9': '1/8T', '0': '1/16T',
+        };
+        if (snapMap[key]) {
+          e.preventDefault();
+          useProjectStore.getState().setSnapUnit(snapMap[key]);
+          return;
+        }
       }
 
       // ── Quick zoom presets (Shift+1..5) ─────────────────
