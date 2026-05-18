@@ -101,6 +101,19 @@ button {
 }
 button:hover  { transform: scale(1.05); }
 button:active { transform: scale(0.95); }
+/* Keyboard focus — visible only for non-mouse focus */
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+button[disabled],
+button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none !important;
+}
 
 select, input[type='number'], input[type='text'] {
   background: var(--bg-surface);
@@ -141,3 +154,98 @@ select:focus, input:focus {
   border-radius: var(--radius-pill);
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+
+/* ── Tool indicator — active tool gets the accent ring ─────────── */
+.tool-button {
+  position: relative;
+  padding: 6px 10px;
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  background: transparent;
+}
+.tool-button:hover  { background: var(--accent-subtle); color: var(--text-primary); }
+.tool-button.active {
+  background: var(--accent);
+  color: var(--accent-dark);
+  box-shadow: 0 0 0 1px var(--accent-border);
+}
+
+/* ── Tooltip — pure CSS, no JS dependency ──────────────────────── */
+[data-tooltip] {
+  position: relative;
+}
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%) translateY(2px);
+  background: #15170f;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-accent);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+  z-index: 99;
+}
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ── Note appearance helpers (used by canvas+legend) ────────────── */
+.note-chip {
+  display: inline-block;
+  width: 14px; height: 10px;
+  border-radius: 2px;
+  background: var(--note-default);
+}
+.note-chip--selected { background: var(--note-selected); }
+.note-chip--ghost    { background: var(--ghost-note); }
+
+/* ── Playhead emphasis when playing ─────────────────────────────── */
+.is-playing .playhead {
+  filter: drop-shadow(0 0 4px var(--danger));
+}
+
+/* ── Responsive breakpoints ─────────────────────────────────────── */
+/* Desktop sweet spot: 1440px. Anything below 1024 collapses the
+   inspector and shrinks tracks. Mobile (≤ 640px) is read-only —
+   editing controls hidden, viewport falls back to scroll-only. */
+@media (max-width: 1280px) {
+  :root {
+    --track-panel-w: 180px;
+    --inspector-w:   140px;
+  }
+}
+@media (max-width: 1024px) {
+  :root {
+    --track-panel-w: 160px;
+    --inspector-w:   0px;
+  }
+  .inspector-panel { display: none !important; }
+}
+@media (max-width: 640px) {
+  /* Read-only mode — hide editing surfaces */
+  .toolbar,
+  .velocity-lane-wrapper,
+  .track-panel-actions {
+    display: none !important;
+  }
+  body { user-select: text; }
+}
+
+/* ── Reduced motion — respect OS setting ────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+  button:hover, button:active { transform: none !important; }
+}

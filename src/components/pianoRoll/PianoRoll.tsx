@@ -4,6 +4,7 @@ import { PianoRollCanvas } from './PianoRollCanvas';
 import { VelocityLane } from './VelocityLane';
 import { ToolBar } from './ToolBar';
 import { ShortcutsHelp } from './ShortcutsHelp';
+import { MiniMap } from './MiniMap';
 import { usePianoRollShortcuts } from '../../hooks/usePianoRollShortcuts';
 import './PianoRoll.css';
 
@@ -31,7 +32,8 @@ export const PianoRoll: React.FC = () => {
     return () => ro.disconnect();
   }, []);
 
-  const rollHeight = Math.max(MIN_ROLL_HEIGHT, dims.height - VELOCITY_HEIGHT);
+  const MINIMAP_HEIGHT = 56;
+  const rollHeight = Math.max(MIN_ROLL_HEIGHT, dims.height - VELOCITY_HEIGHT - MINIMAP_HEIGHT);
   const canvasWidth = Math.max(1, dims.width - KEYBOARD_WIDTH);
 
   return (
@@ -49,6 +51,12 @@ export const PianoRoll: React.FC = () => {
             <span style={{ fontSize: 9, color: 'var(--text-muted)', writingMode: 'vertical-rl', letterSpacing: '0.1em' }}>세기</span>
           </div>
           <VelocityLane width={canvasWidth} height={VELOCITY_HEIGHT} />
+        </div>
+        <div style={{ display: 'flex', height: MINIMAP_HEIGHT, background: '#0a0b08', borderTop: '1px solid var(--border)' }}>
+          <div style={{ width: KEYBOARD_WIDTH, flexShrink: 0, background: '#0e0e1c', borderRight: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 9, color: 'var(--text-muted)', writingMode: 'vertical-rl', letterSpacing: '0.1em' }}>맵</span>
+          </div>
+          <MiniMap width={canvasWidth} height={MINIMAP_HEIGHT} />
         </div>
       </div>
       <ShortcutsHelp open={helpOpen} onClose={() => setHelpOpen(false)} />

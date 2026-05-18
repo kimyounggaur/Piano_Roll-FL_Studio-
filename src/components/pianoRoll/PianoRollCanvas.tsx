@@ -731,25 +731,58 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   );
 
   // Scroll with mouse wheel
+  //   Ctrl/Cmd + wheel  → zoom horizontal (zoomX 0.25..4)
+  //   Alt + wheel       → zoom vertical   (zoomY 0.75..2)
+  //   Shift + wheel     → horizontal scroll
+  //   (no modifier)     → vertical scroll
   const handleWheel = useCallback(
     (e: React.WheelEvent<HTMLCanvasElement>) => {
       e.preventDefault();
-      if (e.ctrlKey) {
-        // Zoom horizontal
-        const factor = e.deltaY > 0 ? 0.85 : 1.18;
-        const newPPT = clamp(vp.pixelsPerTick * factor, 0.05, 2);
-        setViewport({ pixelsPerTick: newPPT });
-      } else if (e.shiftKey) {
-        // Horizontal scroll
-        setViewport({ scrollX: Math.max(0, vp.scrollX + e.deltaY) });
-      } else {
-        // Vertical scroll
-        const maxScrollY = Math.max(0, TOTAL_KEYS * vp.keyHeight - height);
-        setViewport({ scrollY: clamp(vp.scrollY + e.deltaY, 0, maxScrollY) });
+      if (e.ctrlKey || e.metaKey) {
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        const nextZoomX = clamp(vp.zoomX * factor, 0.25, 4);
+        setViewport({ zoomX: nextZoomX });
+        return;
       }
+      if (e.altKey) {
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        const nextZoomY = clamp(vp.zoomY * factor, 0.75, 2);
+        setViewport({ zoomY: nextZoomY });
+        return;
+      }
+      if (e.shiftKey) {
+        // Horizontal scroll
+        const maxScrollX = Math.max(0, totalTicks() * vp.pixelsPerTick - width);
+        setViewport({ scrollX: clamp(vp.scrollX + e.deltaY, 0, maxScrollX) });
+        return;
+      }
+      // Vertical scroll
+      const maxScrollY = Math.max(0, TOTAL_KEYS * vp.keyHeight - height);
+      setViewport({ scrollY: clamp(vp.scrollY + e.deltaY, 0, maxScrollY) });
     },
-    [vp, height, setViewport]
+    [vp, width, height, setViewport, totalTicks]
   );
+
+  // ── Auto-follow playhead during playback ─────────────────────────
+  // Keeps the playhead in the right third of the viewport; when it scrolls
+  // past, jump scrollX so it lands at the left edge of that band.
+  const isPlaying          = useProjectStore((s) => s.isPlaying);
+  const autoFollow         = useProjectStore((s) => s.autoFollowPlayhead);
+  useEffect(() => {
+    if (!isPlaying || !autoFollow) return;
+    let id = 0;
+    const tick = () => {
+      const { playheadTick, viewport } = useProjectStore.getState();
+      const px = playheadTick * viewport.pixelsPerTick - viewport.scrollX;
+      if (px < 0 || px > width) {
+        const newScrollX = Math.max(0, playheadTick * viewport.pixelsPerTick - width * 0.1);
+        setViewport({ scrollX: newScrollX });
+      }
+      id = requestAnimationFrame(tick);
+    };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
+  }, [isPlaying, autoFollow, width, setViewport]);
 
   const getCursor = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {

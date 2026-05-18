@@ -9,6 +9,7 @@ import { quantizeNote, humanizeNotes, strumNotes, arpeggiateNotes, randomizeVelo
 import type { StrumDirection, ArpPattern } from '../types/music';
 import { snapPitchToScale } from '../utils/musicTheory';
 import { DEFAULT_PPQ, DEFAULT_BPM } from '../types/music';
+import { buildTracksFromImport, type ImportedMidi } from '../utils/midiFile';
 
 // ═══════════════════════════════════════════════════════════════════
 //  Selection rect (tick-space, not pixel-space)
@@ -124,6 +125,10 @@ const LS_KEY = 'rolllab_project';
 //  History (undo/redo)
 // ═══════════════════════════════════════════════════════════════════
 const MAX_HISTORY = 100;
+
+// Pitches currently held down on the MIDI input. Module-local because it's
+// transient runtime state, not part of the persisted project document.
+const _activeRecordingNotes: Map<number, { startTick: number; velocity: number }> = new Map();
 
 // ═══════════════════════════════════════════════════════════════════
 //  Pure helpers (no store access — easy to unit-test)
@@ -323,6 +328,9 @@ interface ProjectStore {
 
   // ── viewport ─────────────────────────────────────────────────────
   setViewport: (partial: Partial<PianoRollViewport>) => void;
+  /** Whether the canvas should auto-scroll to keep the playhead in view. */
+  autoFollowPlayhead: boolean;
+  setAutoFollowPlayhead: (v: boolean) => void;
 
   // ── persistence ──────────────────────────────────────────────────
   saveProjectToLocalStorage: () => void;
@@ -333,6 +341,30 @@ interface ProjectStore {
   importJSON: (json: string) => void;
   /** Alias for importJSON. */
   importProjectJson: (json: string) => void;
+  /**
+   * Replace or append imported MIDI tracks. Updates BPM if the file had a
+   * tempo and `mode === 'replace'`. Sets the first imported track active.
+   */
+  importMidi: (imported: ImportedMidi, mode: 'replace' | 'append') => void;
+  /** Swap the whole project document. Clears history. Used by file import. */
+  replaceProject: (project: Project) => void;
+
+  // ── MIDI input recording ─────────────────────────────────────────
+  isRecording: boolean;
+  /** While true, recordedNoteOn/Off will write into the active track. */
+  setRecording: (v: boolean) => void;
+  /**
+   * Snap incoming MIDI pitch to the current project scale when armed.
+   * Off by default — recording exact-played notes is usually preferable.
+   */
+  recordingScaleSnap: boolean;
+  setRecordingScaleSnap: (v: boolean) => void;
+  /** Called from the Web MIDI handler. Stamps an in-flight note in `_activeRecordingNotes`. */
+  recordedNoteOn: (pitch: number, velocity: number) => void;
+  /** Looks up the in-flight note, computes duration, and commits to the active track. */
+  recordedNoteOff: (pitch: number) => void;
+  /** Flush every in-flight note as a short note at the current playhead. Called on disarm. */
+  flushRecordingNotes: () => void;
 
   // ── history (undo/redo) ──────────────────────────────────────────
   /** @internal Past project snapshots — oldest first, newest last. */
@@ -929,6 +961,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   setIsMetronome:  (v)    => set({ isMetronome: v }),
 
   // ── viewport ───────────────────────────────────────────────────
+  autoFollowPlayhead: true,
+  setAutoFollowPlayhead: (v) => set({ autoFollowPlayhead: v }),
+
   setViewport: (partial) =>
     set((s) => {
       const merged = { ...s.viewport, ...partial };
@@ -984,6 +1019,121 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     }
   },
   importProjectJson: (json) => get().importJSON(json),
+
+  replaceProject: (project) => {
+    set({
+      project,
+      _undoStack: [],
+      _redoStack: [],
+      _transactionSnapshot: null,
+      _inTransaction: false,
+    });
+  },
+
+  importMidi: (imported, mode) => {
+    pushHistory(get, set);
+    const startIdx = mode === 'append' ? get().project.tracks.length : 0;
+    const importedTracks = buildTracksFromImport(imported.tracks, startIdx);
+    if (importedTracks.length === 0) return;
+    set((s) => {
+      const tracks = mode === 'replace'
+        ? importedTracks
+        : [...s.project.tracks, ...importedTracks];
+      const settings = (mode === 'replace' && imported.bpm)
+        ? { ...s.project.settings, bpm: imported.bpm }
+        : s.project.settings;
+      return {
+        project: {
+          ...s.project,
+          settings,
+          tracks,
+          activeTrackId: importedTracks[0].id,
+        },
+      };
+    });
+  },
+
+  // ── MIDI input recording ─────────────────────────────────────────
+  isRecording: false,
+  recordingScaleSnap: false,
+  setRecording: (v) => {
+    if (!v) get().flushRecordingNotes();
+    set({ isRecording: v });
+  },
+  setRecordingScaleSnap: (v) => set({ recordingScaleSnap: v }),
+
+  recordedNoteOn: (pitch, velocity) => {
+    const { isRecording, playheadTick, recordingScaleSnap } = get();
+    const { scaleSnapEnabled, scaleName, scaleRoot } = get().project.settings;
+    // Always preview through Tone — preview is handled by the caller via
+    // toneEngine.previewNote; the store only records.
+    if (!isRecording) return;
+    let p = Math.max(0, Math.min(127, pitch));
+    if (recordingScaleSnap && scaleSnapEnabled && scaleName !== 'none') {
+      p = snapPitchToScale(p, scaleRoot, scaleName, 'nearest');
+    }
+    _activeRecordingNotes.set(p, { startTick: playheadTick, velocity: Math.max(1, Math.min(127, velocity)) });
+  },
+
+  recordedNoteOff: (pitch) => {
+    const { isRecording, playheadTick, activeTrack, snapTicks } = get();
+    if (!isRecording) return;
+    const p = Math.max(0, Math.min(127, pitch));
+    const inflight = _activeRecordingNotes.get(p);
+    if (!inflight) return;
+    _activeRecordingNotes.delete(p);
+    const track = activeTrack();
+    if (!track) return;
+    const dur = Math.max(snapTicks(), playheadTick - inflight.startTick);
+    // Bypass pushHistory per-note so a long take is one undo (caller wraps
+    // an entire recording session in a transaction if desired).
+    pushHistory(get, set);
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateTrackNotes(s.project.tracks, track.id, (notes) => [
+          ...notes,
+          {
+            id: nanoid(),
+            pitch: p,
+            startTick: inflight.startTick,
+            durationTicks: dur,
+            velocity: inflight.velocity,
+            channel: track.channel,
+            trackId: track.id,
+          },
+        ]),
+      },
+    }));
+  },
+
+  flushRecordingNotes: () => {
+    if (_activeRecordingNotes.size === 0) return;
+    const { playheadTick, snapTicks, activeTrack } = get();
+    const track = activeTrack();
+    if (!track) { _activeRecordingNotes.clear(); return; }
+    const minDur = snapTicks();
+    const pending: Note[] = [];
+    _activeRecordingNotes.forEach((meta, pitch) => {
+      pending.push({
+        id: nanoid(),
+        pitch,
+        startTick: meta.startTick,
+        durationTicks: Math.max(minDur, playheadTick - meta.startTick),
+        velocity: meta.velocity,
+        channel: track.channel,
+        trackId: track.id,
+      });
+    });
+    _activeRecordingNotes.clear();
+    pushHistory(get, set);
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateTrackNotes(s.project.tracks, track.id, (notes) => [...notes, ...pending]),
+      },
+    }));
+  },
 
   // ── history (undo/redo) ────────────────────────────────────────
   _undoStack: [],
