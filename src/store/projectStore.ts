@@ -168,24 +168,24 @@ function applyNotePatch(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Pattern unification helper — used by every pattern action to migrate
-//  legacy (un-patterned) projects on the fly. Mutates the draft state.
+//  Pattern unification helper — pure function, returns a migrated copy
+//  of `project` without mutating anything (Zustand v5 immutable state).
 // ─────────────────────────────────────────────────────────────────────
-function ensurePatternsInline(s: { project: Project }): void {
-  if (s.project.patterns && s.project.patterns.length > 0) {
-    if (s.project.activePatternId
-        && s.project.patterns.some((p) => p.id === s.project.activePatternId)) return;
-    s.project.activePatternId = s.project.patterns[0].id;
-    return;
+function getMigratedProject(project: Project): Project {
+  if (project.patterns && project.patterns.length > 0) {
+    const validActive = project.activePatternId
+      && project.patterns.some((p) => p.id === project.activePatternId);
+    if (validActive) return project;
+    return { ...project, activePatternId: project.patterns[0].id };
   }
+  const pid = nanoid();
   const stub: import('../types/music').Pattern = {
-    id: Math.random().toString(36).slice(2, 11) + Date.now().toString(36),
+    id: pid,
     name: 'Pattern 1',
-    lengthBars: s.project.settings.bars,
-    tracks: s.project.tracks,
+    lengthBars: project.settings.bars,
+    tracks: project.tracks,
   };
-  s.project.patterns = [stub];
-  s.project.activePatternId = stub.id;
+  return { ...project, patterns: [stub], activePatternId: pid };
 }
 
 function updateTrackNotes(
@@ -1139,19 +1139,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const id = nanoid();
     pushHistory(get, set);
     set((s) => {
-      ensurePatternsInline(s);
+      const project = getMigratedProject(s.project);
       // 1) Persist the current edit buffer into the previously-active pattern.
-      const patternsWithSnapshot = (s.project.patterns ?? []).map((p) =>
-        p.id === s.project.activePatternId ? { ...p, tracks: s.project.tracks } : p);
+      const patternsWithSnapshot = (project.patterns ?? []).map((p) =>
+        p.id === project.activePatternId ? { ...p, tracks: project.tracks } : p);
       // 2) Append a fresh empty pattern and switch to it.
       const fresh: import('../types/music').Pattern = {
         id, name: name ?? `Pattern ${patternsWithSnapshot.length + 1}`,
-        lengthBars: s.project.settings.bars,
+        lengthBars: project.settings.bars,
         tracks: [makeTrack(`트랙 1`, 0)],
       };
       return {
         project: {
-          ...s.project,
+          ...project,
           tracks: fresh.tracks,
           activeTrackId: fresh.tracks[0].id,
           patterns: [...patternsWithSnapshot, fresh],
@@ -1165,27 +1165,27 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   removePattern: (id) => {
     pushHistory(get, set);
     set((s) => {
-      ensurePatternsInline(s);
-      const patterns = (s.project.patterns ?? []).filter((p) => p.id !== id);
+      const project = getMigratedProject(s.project);
+      const patterns = (project.patterns ?? []).filter((p) => p.id !== id);
       if (patterns.length === 0) {
         // Never leave the project pattern-less; snapshot current tracks back.
         const stub: import('../types/music').Pattern = {
           id: nanoid(), name: 'Pattern 1',
-          lengthBars: s.project.settings.bars,
-          tracks: s.project.tracks,
+          lengthBars: project.settings.bars,
+          tracks: project.tracks,
         };
-        return { project: { ...s.project, patterns: [stub], activePatternId: stub.id } };
+        return { project: { ...project, patterns: [stub], activePatternId: stub.id } };
       }
       // If we're removing the active pattern, swap to the first remaining one.
-      let nextTracks = s.project.tracks;
-      let nextActive = s.project.activePatternId;
-      if (s.project.activePatternId === id) {
+      let nextTracks = project.tracks;
+      let nextActive = project.activePatternId;
+      if (project.activePatternId === id) {
         nextTracks = patterns[0].tracks;
         nextActive = patterns[0].id;
       }
       return {
         project: {
-          ...s.project,
+          ...project,
           tracks: nextTracks,
           activeTrackId: nextTracks[0]?.id ?? null,
           patterns,
@@ -1199,11 +1199,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const newId = nanoid();
     pushHistory(get, set);
     set((s) => {
-      ensurePatternsInline(s);
-      const patterns = s.project.patterns ?? [];
+      const project = getMigratedProject(s.project);
+      const patterns = project.patterns ?? [];
       // Snapshot current edit buffer back into its pattern first.
       const synced = patterns.map((p) =>
-        p.id === s.project.activePatternId ? { ...p, tracks: s.project.tracks } : p);
+        p.id === project.activePatternId ? { ...p, tracks: project.tracks } : p);
       const source = synced.find((p) => p.id === id);
       if (!source) return s;
       const clonedTracks = source.tracks.map((t) => ({
@@ -1214,7 +1214,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const copy = { ...source, id: newId, name: `${source.name} (copy)`, tracks: clonedTracks };
       return {
         project: {
-          ...s.project,
+          ...project,
           tracks: clonedTracks,
           activeTrackId: clonedTracks[0]?.id ?? null,
           patterns: [...synced, copy],
@@ -1238,16 +1238,16 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   setActivePattern: (id) => {
     pushHistory(get, set);
     set((s) => {
-      ensurePatternsInline(s);
-      const patterns = s.project.patterns ?? [];
+      const project = getMigratedProject(s.project);
+      const patterns = project.patterns ?? [];
       // Snapshot current edit buffer into the previously-active pattern.
       const synced = patterns.map((p) =>
-        p.id === s.project.activePatternId ? { ...p, tracks: s.project.tracks } : p);
+        p.id === project.activePatternId ? { ...p, tracks: project.tracks } : p);
       const target = synced.find((p) => p.id === id);
       if (!target) return s;
       return {
         project: {
-          ...s.project,
+          ...project,
           tracks: target.tracks,
           activeTrackId: target.tracks[0]?.id ?? null,
           patterns: synced,

@@ -84,6 +84,8 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   const rafRef = useRef<number | null>(null);
   const lastPlayheadRef = useRef<number>(-1);
   const drag = useRef<DragState>({ type: 'none', startX: 0, startY: 0 });
+  // Remembers the last manually-resized note duration so the next drawn note inherits it.
+  const lastNoteDurationRef = useRef<number | null>(null);
   const {
     project, viewport, activeTool,
     addNote, removeNote, selectNote, clearSelection, selectNotesInRect, setActiveTrack,
@@ -776,10 +778,11 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
           ? snapPitchToScale(pitch, settings.scaleRoot, settings.scaleName, 'nearest')
           : clamp(pitch, 0, 127);
         if (activeTrackId && snappedTick >= 0 && snappedTick < totalTicks() && finalPitch >= 0) {
+          const durationTicks = lastNoteDurationRef.current ?? snapTicks;
           addNote(activeTrackId, {
             pitch: finalPitch,
             startTick: snappedTick,
-            durationTicks: snapTicks,
+            durationTicks,
             velocity: 100,
           });
         }
@@ -991,6 +994,12 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         } else if (resizePreview.dT !== 0) {
           resizeSelectedNotesLeft(resizePreview.dT);
         }
+      }
+      // Remember the anchor note's final duration for the next drawn note.
+      if ((d.type === 'resize' || d.type === 'resize-left') && d.noteId && resizePreview) {
+        const at = useProjectStore.getState().activeTrack();
+        const n = at?.notes.find((note) => note.id === d.noteId);
+        if (n) lastNoteDurationRef.current = n.durationTicks;
       }
       if (resizePreview) setResizePreview(null);
 
