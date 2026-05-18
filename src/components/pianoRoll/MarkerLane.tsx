@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { tickToX, xToTick } from '../../utils/geometry';
+import type { TimeMarker } from '../../types/music';
 
 interface Props {
   width: number;
   height?: number;
 }
+
+const EMPTY_MARKERS: TimeMarker[] = [];
 
 // ═══════════════════════════════════════════════════════════════════
 //  MarkerLane — Verse / Chorus etc. flags above the bar ruler (#44)
@@ -14,7 +17,7 @@ export const MarkerLane: React.FC<Props> = ({ width, height = 18 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewport = useProjectStore((s) => s.viewport);
   const playheadTick = useProjectStore((s) => s.playheadTick);
-  const markers = useProjectStore((s) => s.project.markers ?? []);
+  const markers = useProjectStore((s) => s.project.markers ?? EMPTY_MARKERS);
   const addMarker = useProjectStore((s) => s.addMarker);
   const removeMarker = useProjectStore((s) => s.removeMarker);
   const updateMarker = useProjectStore((s) => s.updateMarker);
