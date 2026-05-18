@@ -4,6 +4,7 @@ import { tickToX, xToTick, pitchToY, yToPitch, clamp, rectsIntersect } from '../
 import { snapUnitToTicks } from '../../utils/time';
 import { isBlackKey, isInScale, snapPitchToScale, buildChord } from '../../utils/musicTheory';
 import type { Note } from '../../types/music';
+import { NOTE_COLOR_GROUPS } from '../../types/music';
 
 const TOTAL_KEYS = 128;
 const RESIZE_HANDLE_PX = 6;
@@ -34,7 +35,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   const drag = useRef<DragState>({ type: 'none', startX: 0, startY: 0 });
   const {
     project, viewport, activeTool,
-    addNote, removeNote, selectNote, clearSelection, selectNotesInRect,
+    addNote, removeNote, selectNote, clearSelection, selectNotesInRect, setActiveTrack,
     setViewport, snapTickValue, totalTicks,
     moveSelectedNotes, duplicateSelectedNotesInPlace,
     resizeSelectedNotes, alignSelectedNotesEndTick,
@@ -161,21 +162,24 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
     }
 
     // ── Ghost notes — Wise muted overlay ──
-    const soloActive = project.tracks.some((tr) => tr.solo);
-    for (const track of project.tracks) {
-      if (track.id === project.activeTrackId) continue;
-      const hidden = track.muted || (soloActive && !track.solo);
-      if (hidden) continue;
-      ctx.globalAlpha = 0.22;
-      for (const note of track.notes) {
-        const x = tickToX(note.startTick, vp);
-        const w = note.durationTicks * vp.pixelsPerTick;
-        const y = pitchToY(note.pitch, vp);
-        if (x + w < 0 || x > width) continue;
-        ctx.fillStyle = track.color;
-        ctx.fillRect(x, y + 1, Math.max(2, w - 1), vp.keyHeight - 2);
+    if (settings.ghostNotesVisible) {
+      const soloActive = project.tracks.some((tr) => tr.solo);
+      for (const track of project.tracks) {
+        if (track.id === project.activeTrackId) continue;
+        const hidden = track.muted || (soloActive && !track.solo);
+        if (hidden) continue;
+        ctx.globalAlpha = 0.22;
+        for (const note of track.notes) {
+          if (note.muted) continue;
+          const x = tickToX(note.startTick, vp);
+          const w = note.durationTicks * vp.pixelsPerTick;
+          const y = pitchToY(note.pitch, vp);
+          if (x + w < 0 || x > width) continue;
+          ctx.fillStyle = track.color;
+          ctx.fillRect(x, y + 1, Math.max(2, w - 1), vp.keyHeight - 2);
+        }
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = 1;
     }
 
     // ── Active track notes — Wise Green notes ──
@@ -203,8 +207,16 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         const nw = Math.max(3, w - 1);
         const nh = vp.keyHeight - 2;
 
-        // Note body — selected = Wise Warning Yellow
-        const baseColor = note.selected ? '#ffd11a' : activeTrack.color;
+        // Note body — selection > muted > colorGroup > track colour
+        const groupColor = (() => {
+          const gIdx = note.colorGroup ? parseInt(note.colorGroup, 10) : 0;
+          if (!Number.isFinite(gIdx) || gIdx <= 0 || gIdx >= NOTE_COLOR_GROUPS.length) return null;
+          return NOTE_COLOR_GROUPS[gIdx] || null;
+        })();
+        const baseColor = note.selected
+          ? '#ffd11a'
+          : (groupColor ?? activeTrack.color);
+        ctx.globalAlpha = note.muted ? 0.35 : 1;
         ctx.fillStyle = baseColor;
         ctx.fillRect(x, y + 1, nw, nh);
 
@@ -225,6 +237,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         ctx.fillRect(x + nw - 3, y + 2, 3, nh - 4);
       }
+      ctx.globalAlpha = 1; // restore in case last note was muted
     }
 
     // Playhead is drawn on a separate overlay canvas via rAF (see drawPlayhead).
@@ -346,6 +359,35 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       return { cx: e.clientX - rect.left, cy: e.clientY - rect.top };
     },
     []
+  );
+
+  // Double-click on a ghost note → activate its track (option-gated).
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!settings.ghostDoubleClickActivates || !settings.ghostNotesVisible) return;
+      const { cx, cy } = getCursorPos(e);
+      const soloActive = project.tracks.some((tr) => tr.solo);
+      // Iterate non-active, visible tracks in reverse so top-drawn note wins
+      const visibleGhostTracks = project.tracks
+        .filter((t) => t.id !== project.activeTrackId
+          && !t.muted
+          && (!soloActive || t.solo));
+      for (const tr of visibleGhostTracks) {
+        for (let i = tr.notes.length - 1; i >= 0; i--) {
+          const n = tr.notes[i];
+          if (n.muted) continue;
+          const nx = tickToX(n.startTick, vp);
+          const nw = Math.max(3, n.durationTicks * vp.pixelsPerTick - 1);
+          const ny = pitchToY(n.pitch, vp);
+          const nh = vp.keyHeight - 2;
+          if (cx >= nx && cx <= nx + nw && cy >= ny + 1 && cy <= ny + nh) {
+            setActiveTrack(tr.id);
+            return;
+          }
+        }
+      }
+    },
+    [settings.ghostDoubleClickActivates, settings.ghostNotesVisible, project, vp, getCursorPos, setActiveTrack],
   );
 
   const handleMouseDown = useCallback(
@@ -627,6 +669,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         onMouseMove={handleMouseMoveCursor}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
         onWheel={handleWheel}
         onContextMenu={(e) => e.preventDefault()}
       />

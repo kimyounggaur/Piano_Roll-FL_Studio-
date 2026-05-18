@@ -5,7 +5,7 @@ import type {
   SnapValue, ScaleType,
 } from '../types/music';
 import { ticksPerBar, snapUnitToTicks, snapTick } from '../utils/time';
-import { quantizeNote, humanizeNotes, strumNotes, arpeggiateNotes } from '../utils/noteTransforms';
+import { quantizeNote, humanizeNotes, strumNotes, arpeggiateNotes, randomizeVelocity, scaleVelocity } from '../utils/noteTransforms';
 import type { StrumDirection, ArpPattern } from '../types/music';
 import { snapPitchToScale } from '../utils/musicTheory';
 import { DEFAULT_PPQ, DEFAULT_BPM } from '../types/music';
@@ -90,6 +90,11 @@ export function createDefaultProject(): Project {
       arpStepTicks: 120,
       arpRepeatCount: 2,
       arpReplaceOriginals: true,
+      randomVelMin: 80,
+      randomVelMax: 110,
+      scaleVelocityAmount: 1.1,
+      ghostNotesVisible: true,
+      ghostDoubleClickActivates: true,
     },
     tracks: [track],
     activeTrackId: track.id,
@@ -285,6 +290,17 @@ interface ProjectStore {
     replaceOriginals?: boolean,
     seed?: number,
   ) => void;
+
+  /** Replace each selected note's velocity with a uniform random value in [min, max]. */
+  randomizeVelocitySelectedNotes: (minVelocity: number, maxVelocity: number, seed?: number) => void;
+  /** Multiply each selected note's velocity by `amount`. */
+  scaleVelocitySelectedNotes: (amount: number) => void;
+  /** Set `muted: true` on every selected note. */
+  muteSelectedNotes: () => void;
+  /** Set `muted: false` on every selected note. */
+  unmuteSelectedNotes: () => void;
+  /** Tag every selected note with a colour group (0..15). Group 0 means "use track colour". */
+  setColorGroupForSelectedNotes: (group: number) => void;
 
   // ── transport ────────────────────────────────────────────────────
   setPlayheadTick: (tick: number) => void;
@@ -709,6 +725,62 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
             notes: t.notes.map((n) => byId.get(n.id) ?? n),
           };
         }),
+      },
+    }));
+  },
+
+  randomizeVelocitySelectedNotes: (minVelocity, maxVelocity, seed) => {
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => {
+          const selected = t.notes.filter((n) => n.selected);
+          if (selected.length === 0) return t;
+          const out  = randomizeVelocity(selected, minVelocity, maxVelocity, seed);
+          const byId = new Map(out.map((n) => [n.id, n]));
+          return { ...t, notes: t.notes.map((n) => byId.get(n.id) ?? n) };
+        }),
+      },
+    }));
+  },
+
+  scaleVelocitySelectedNotes: (amount) => {
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => {
+          const selected = t.notes.filter((n) => n.selected);
+          if (selected.length === 0) return t;
+          const out  = scaleVelocity(selected, amount);
+          const byId = new Map(out.map((n) => [n.id, n]));
+          return { ...t, notes: t.notes.map((n) => byId.get(n.id) ?? n) };
+        }),
+      },
+    }));
+  },
+
+  muteSelectedNotes: () =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateAllNotes(s.project.tracks, (n) => n.selected ? { ...n, muted: true } : n),
+      },
+    })),
+
+  unmuteSelectedNotes: () =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateAllNotes(s.project.tracks, (n) => n.selected ? { ...n, muted: false } : n),
+      },
+    })),
+
+  setColorGroupForSelectedNotes: (group) => {
+    const g = Math.max(0, Math.min(15, Math.round(group)));
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateAllNotes(s.project.tracks, (n) => n.selected ? { ...n, colorGroup: String(g) } : n),
       },
     }));
   },

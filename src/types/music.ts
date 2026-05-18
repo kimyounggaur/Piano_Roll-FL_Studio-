@@ -202,6 +202,16 @@ export interface ProjectSettings {
   arpStepTicks: number;
   arpRepeatCount: number;
   arpReplaceOriginals: boolean;        // delete the source chord notes when arpeggiating
+
+  // ── Randomize / scale velocity defaults ──────────────────────────────
+  randomVelMin: number;          // 1..127
+  randomVelMax: number;          // 1..127
+  scaleVelocityAmount: number;   // multiplier, e.g. 1.1 = +10%
+
+  // ── Ghost notes (multi-track display) ────────────────────────────────
+  ghostNotesVisible: boolean;
+  /** Double-clicking a ghost note switches its track to the active track. */
+  ghostDoubleClickActivates: boolean;
 }
 
 // Re-exports for convenience
@@ -315,6 +325,31 @@ export const CHORD_STAMPS: Record<string, number[]> = {
   Dim7:   [0,3,6,9],
   HalfDim:[0,3,6,10],
 };
+
+/**
+ * 16-slot palette for `Note.colorGroup`. When a note has a colorGroup, the
+ * canvas uses this colour instead of the parent track's colour, letting
+ * users tag notes by function (melody/harmony/voicing/etc.) within a track.
+ * Group 0 is reserved as "use track colour".
+ */
+export const NOTE_COLOR_GROUPS: readonly string[] = [
+  '',         // 0 — fall back to track color
+  '#9fe870',  // Wise Green
+  '#ffd11a',  // Wise Yellow
+  '#ffc091',  // Wise Orange
+  '#d03238',  // Wise Red
+  '#38c8ff',  // Cyan
+  '#cdffad',  // Pale green
+  '#e2f6d5',  // Mint
+  '#d4f0b5',  // Light Mint
+  '#868685',  // Wise Gray
+  '#bb8df0',  // Lavender
+  '#ff8ad6',  // Pink
+  '#7bc554',  // Hover green
+  '#f3d77b',  // Sand
+  '#5d7aa3',  // Slate blue
+  '#163300',  // Dark green
+] as const;
 
 /** Default MIDI display range: C1 (MIDI 24) – C7 (MIDI 96). */
 export const DEFAULT_LOW_PITCH:  MidiPitch = 24;

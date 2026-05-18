@@ -196,6 +196,42 @@ export function arpeggiateNotes(notes: Note[], opts: ArpeggiateOptions): Note[] 
   }));
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+//  Velocity-only transforms
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Replace each note's velocity with a uniform random value in
+ * [min, max] (inclusive). Both bounds are clamped to [1, 127] and
+ * automatically swapped if `min > max`. `seed` makes the result deterministic.
+ */
+export function randomizeVelocity(
+  notes: Note[],
+  min: number,
+  max: number,
+  seed?: number,
+): Note[] {
+  let lo = clamp1to127(Math.round(min));
+  let hi = clamp1to127(Math.round(max));
+  if (lo > hi) [lo, hi] = [hi, lo];
+  const rng = seed != null ? mulberry32(seed) : Math.random;
+  return notes.map((n) => ({
+    ...n,
+    velocity: lo + Math.floor(rng() * (hi - lo + 1)),
+  }));
+}
+
+/**
+ * Multiply each note's velocity by `amount` and clamp to [1, 127].
+ * `amount = 1.1` boosts by 10 %, `0.9` cuts 10 %.
+ */
+export function scaleVelocity(notes: Note[], amount: number): Note[] {
+  return notes.map((n) => ({
+    ...n,
+    velocity: clamp1to127(Math.round(n.velocity * amount)),
+  }));
+}
+
 function clamp1to127(v: number): number {
   return v < 1 ? 1 : v > 127 ? 127 : v;
 }
