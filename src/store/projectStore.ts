@@ -205,8 +205,13 @@ interface ProjectStore {
   deselectAll: () => void;
   /** Alias for deselectAll. */
   clearSelection: () => void;
-  /** Select all notes inside a tick/pitch rectangle (rubber-band). */
-  selectNotesInRect: (rect: SelectionRect) => void;
+  /**
+   * Select notes that overlap a tick/pitch rectangle (rubber-band marquee).
+   * A note overlaps when its [startTick, startTick+durationTicks) range
+   * intersects [startTick, endTick) AND its pitch is within [minPitch, maxPitch].
+   * @param additive - if true, OR with current selection; if false, replace it.
+   */
+  selectNotesInRect: (rect: SelectionRect, additive?: boolean) => void;
   deleteSelected: () => void;
   /**
    * Translate all selected notes by (deltaPitch, deltaTicks).
@@ -453,22 +458,29 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   clearSelection: () => get().deselectAll(),
 
-  selectNotesInRect: ({ startTick, endTick, minPitch, maxPitch }) =>
+  selectNotesInRect: ({ startTick, endTick, minPitch, maxPitch }, additive = false) =>
     set((s) => ({
       project: {
         ...s.project,
         tracks: s.project.tracks.map((t) => {
+          // Marquee applies only to the active track; non-active tracks
+          // keep their existing selection state.
           if (t.id !== s.project.activeTrackId) return t;
           return {
             ...t,
-            notes: t.notes.map((n) => ({
-              ...n,
-              selected:
-                n.startTick >= startTick &&
-                n.startTick + n.durationTicks <= endTick &&
-                n.pitch     >= minPitch &&
-                n.pitch     <= maxPitch,
-            })),
+            notes: t.notes.map((n) => {
+              const overlaps =
+                n.startTick + n.durationTicks > startTick &&
+                n.startTick < endTick &&
+                n.pitch >= minPitch &&
+                n.pitch <= maxPitch;
+              return {
+                ...n,
+                selected: overlaps
+                  ? true
+                  : additive ? !!n.selected : false,
+              };
+            }),
           };
         }),
       },

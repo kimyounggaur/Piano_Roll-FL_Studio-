@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useProjectStore } from '../../store/projectStore';
-import { tickToX, xToTick, pitchToY, yToPitch, clamp } from '../../utils/geometry';
+import { tickToX, xToTick, pitchToY, yToPitch, clamp, rectsIntersect } from '../../utils/geometry';
 import { snapUnitToTicks } from '../../utils/time';
 import { isBlackKey, isInScale, snapPitchToScale } from '../../utils/musicTheory';
 import type { Note } from '../../types/music';
@@ -34,7 +34,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   const drag = useRef<DragState>({ type: 'none', startX: 0, startY: 0 });
   const {
     project, viewport, activeTool,
-    addNote, removeNote, selectNote, clearSelection,
+    addNote, removeNote, selectNote, clearSelection, selectNotesInRect,
     setViewport, snapTickValue, totalTicks,
     moveSelectedNotes, duplicateSelectedNotesInPlace,
     resizeSelectedNotes, alignSelectedNotesEndTick,
@@ -54,6 +54,13 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
   //   endTick: target end tick of the anchor note (origStartTick + origDuration + dT)
   const [resizePreview, setResizePreview] = useState<
     { dT: number; shift: boolean; endTick: number; mx: number; my: number } | null
+  >(null);
+
+  // Marquee selection — pixel-space rect plus the modifier state captured at
+  // mousedown. Drives both the rectangle render and the in-flight preview
+  // of which notes will be selected. Committed to the store on mouseup.
+  const [selectionRect, setSelectionRect] = useState<
+    { x1: number; y1: number; x2: number; y2: number; additive: boolean } | null
   >(null);
   const { settings } = project;
   const vp = viewport;
@@ -222,14 +229,33 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
 
     // Playhead is drawn on a separate overlay canvas via rAF (see drawPlayhead).
 
-    // ── Selection box — Wise Warning Yellow ──
-    const d = drag.current;
-    if (d.type === 'select-box' && d.boxX2 !== undefined && d.boxY2 !== undefined) {
-      const bx = Math.min(d.startX, d.boxX2);
-      const by = Math.min(d.startY, d.boxY2);
-      const bw = Math.abs(d.boxX2 - d.startX);
-      const bh = Math.abs(d.boxY2 - d.startY);
-      ctx.strokeStyle = '#ffd11a';   // Wise Warning Yellow
+    // ── Marquee selection box + in-flight intersection preview ──────────
+    if (selectionRect) {
+      const bx = Math.min(selectionRect.x1, selectionRect.x2);
+      const by = Math.min(selectionRect.y1, selectionRect.y2);
+      const bw = Math.abs(selectionRect.x2 - selectionRect.x1);
+      const bh = Math.abs(selectionRect.y2 - selectionRect.y1);
+
+      // Yellow outline on every active-track note that intersects the rect.
+      // This is the live preview — actual `selected` state is updated on mouseup.
+      if (activeTrack) {
+        const marqueeRect = { x: bx, y: by, w: bw, h: bh };
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#ffd11a';
+        for (const note of activeTrack.notes) {
+          const nx = tickToX(note.startTick, vp);
+          const nw = Math.max(3, note.durationTicks * vp.pixelsPerTick - 1);
+          const ny = pitchToY(note.pitch, vp);
+          const nh = vp.keyHeight - 2;
+          const noteRect = { x: nx, y: ny + 1, w: nw, h: nh };
+          if (rectsIntersect(noteRect, marqueeRect)) {
+            ctx.strokeRect(noteRect.x - 0.5, noteRect.y - 0.5, noteRect.w + 1, noteRect.h + 1);
+          }
+        }
+      }
+
+      // The rectangle itself — Wise Warning Yellow dashed border + tinted fill
+      ctx.strokeStyle = '#ffd11a';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 3]);
       ctx.strokeRect(bx, by, bw, bh);
@@ -237,7 +263,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
       ctx.fillRect(bx, by, bw, bh);
       ctx.setLineDash([]);
     }
-  }, [width, height, vp, project, settings, totalTicks, movePreview, resizePreview]);
+  }, [width, height, vp, project, settings, totalTicks, movePreview, resizePreview, selectionRect]);
 
   useEffect(() => { draw(); });
 
@@ -364,8 +390,12 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
             origDuration: hit.note.durationTicks,
           };
         } else {
-          if (!additive) clearSelection();
+          // Begin marquee. Defer the "clear existing selection" step to
+          // mouseup commit so the preview can still highlight overlaps,
+          // and so a zero-distance click doesn't clobber selection unless
+          // the user actually drags.
           drag.current = { type: 'select-box', startX: cx, startY: cy, boxX2: cx, boxY2: cy };
+          setSelectionRect({ x1: cx, y1: cy, x2: cx, y2: cy, additive });
         }
         return;
       }
@@ -426,6 +456,7 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
 
       if (d.type === 'select-box') {
         drag.current = { ...d, boxX2: cx, boxY2: cy };
+        setSelectionRect((prev) => prev ? { ...prev, x2: cx, y2: cy } : prev);
         return;
       }
 
@@ -487,30 +518,30 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         }
       }
       if (resizePreview) setResizePreview(null);
-      if (d.type === 'select-box' && d.boxX2 !== undefined && d.boxY2 !== undefined) {
-        const x1 = Math.min(d.startX, d.boxX2);
-        const x2 = Math.max(d.startX, d.boxX2);
-        const y1 = Math.min(d.startY, d.boxY2);
-        const y2 = Math.max(d.startY, d.boxY2);
-        const t1 = xToTick(x1, vp);
-        const t2 = xToTick(x2, vp);
-        const p1 = yToPitch(y1, vp);
-        const p2 = yToPitch(y2, vp);
-        const pMin = Math.min(p1, p2);
-        const pMax = Math.max(p1, p2);
-        const activeTrack = project.tracks.find((t) => t.id === project.activeTrackId);
-        if (activeTrack) {
-          activeTrack.notes.forEach((n) => {
-            if (n.startTick >= t1 && n.startTick <= t2 && n.pitch >= pMin && n.pitch <= pMax) {
-              selectNote(activeTrack.id, n.id, true);
-            }
-          });
+      if (d.type === 'select-box' && selectionRect) {
+        const { x1: sx1, y1: sy1, x2: sx2, y2: sy2, additive: rectAdditive } = selectionRect;
+        const dragged = Math.abs(sx2 - sx1) > 2 || Math.abs(sy2 - sy1) > 2;
+        if (dragged) {
+          // Convert pixel rect → tick/pitch rect (tick grows with x; pitch grows upward).
+          const t1 = Math.min(xToTick(sx1, vp), xToTick(sx2, vp));
+          const t2 = Math.max(xToTick(sx1, vp), xToTick(sx2, vp));
+          const p1 = yToPitch(sy1, vp);
+          const p2 = yToPitch(sy2, vp);
+          selectNotesInRect(
+            { startTick: t1, endTick: t2, minPitch: Math.min(p1, p2), maxPitch: Math.max(p1, p2) },
+            rectAdditive,
+          );
+        } else if (!rectAdditive) {
+          // Plain click on empty space (no drag, no modifier) → clear selection
+          clearSelection();
         }
+        setSelectionRect(null);
       }
       drag.current = { type: 'none', startX: 0, startY: 0 };
     },
-    [vp, project, selectNote, movePreview, moveSelectedNotes,
-     resizePreview, resizeSelectedNotes, alignSelectedNotesEndTick]
+    [vp, movePreview, moveSelectedNotes,
+     resizePreview, resizeSelectedNotes, alignSelectedNotesEndTick,
+     selectionRect, selectNotesInRect, clearSelection]
   );
 
   // Scroll with mouse wheel
