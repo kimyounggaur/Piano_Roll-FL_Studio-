@@ -8,11 +8,40 @@ import {
 import { snapUnitToTicks } from '../../utils/time';
 import { hasNoteAt, noteCellKey, notesUnder } from '../../utils/notes';
 import { isBlackKey, isInScale, snapPitchToScale, buildChord } from '../../utils/musicTheory';
-import type { Note } from '../../types/music';
+import type { Note, PianoRollTool } from '../../types/music';
 import { NOTE_COLOR_GROUPS } from '../../types/music';
 
 const TOTAL_KEYS = 128;
 const RESIZE_HANDLE_PX = 6;
+const TOOL_CURSORS: Record<PianoRollTool, string> = {
+  draw: makeSvgCursor(`
+    <path d="M6 21l4.2-1.2L22 8 18 4 6.2 15.8 5 20z" fill="#9fe870" stroke="#163300" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M16.5 5.5l4 4" stroke="#163300" stroke-width="1.4" stroke-linecap="round"/>
+  `, 5, 21, 'crosshair'),
+  paint: makeSvgCursor(`
+    <path d="M7 20c2.9.4 5.4-.4 6.2-2.3.6-1.5-.1-3.1-1.6-3.7-1.7-.8-3.8.1-4.4 2.1-.4 1.2-.4 2.5-.2 3.9z" fill="#9fe870" stroke="#163300" stroke-width="1.3"/>
+    <path d="M11.4 14.1L20.7 4.8c.8-.8 2.1.5 1.3 1.3l-9.1 9.4" stroke="#e8ebe6" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M11.4 14.1L20.7 4.8c.8-.8 2.1.5 1.3 1.3l-9.1 9.4" stroke="#163300" stroke-width="1.1" stroke-linecap="round"/>
+  `, 7, 20, 'cell'),
+  select: makeSvgCursor(`
+    <path d="M6 4l12 8-5.4 1.1 3.1 5.5-2.7 1.5-3.1-5.4-3.9 3.9z" fill="#e8ebe6" stroke="#163300" stroke-width="1.4" stroke-linejoin="round"/>
+    <rect x="15" y="15" width="6" height="6" fill="none" stroke="#9fe870" stroke-width="1.4"/>
+  `, 6, 4, 'default'),
+  erase: makeSvgCursor(`
+    <path d="M5 16l8.8-8.8c.9-.9 2.3-.9 3.2 0l2.8 2.8c.9.9.9 2.3 0 3.2L12 21H7.5L5 18.5z" fill="#ffc091" stroke="#163300" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M10.6 10.4l6 6" stroke="#163300" stroke-width="1.2"/>
+  `, 5, 18, 'not-allowed'),
+  slice: makeSvgCursor(`
+    <circle cx="8" cy="18" r="2.4" fill="none" stroke="#9fe870" stroke-width="1.5"/>
+    <circle cx="16" cy="18" r="2.4" fill="none" stroke="#9fe870" stroke-width="1.5"/>
+    <path d="M9.8 16.2L20 6M14.2 16.2L4 6" stroke="#e8ebe6" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M12 14l1.2 2.1" stroke="#9fe870" stroke-width="1.4" stroke-linecap="round"/>
+  `, 12, 14, 'crosshair'),
+  stamp: makeSvgCursor(`
+    <path d="M13 5v11.2a3.6 3.6 0 1 1-1.7-3V5h1.7z" fill="#9fe870" stroke="#163300" stroke-width="1.2"/>
+    <path d="M13 5c2.2 2.4 4.8 2.2 6.3 4.5" fill="none" stroke="#e8ebe6" stroke-width="1.6" stroke-linecap="round"/>
+  `, 13, 16, 'copy'),
+};
 
 interface DragState {
   type: 'none' | 'draw' | 'move' | 'resize' | 'select-box' | 'paint' | 'paint-erase';
@@ -816,18 +845,20 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
 
   const getCursor = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (activeTool === 'erase') return 'crosshair';
-      if (activeTool === 'select') return 'default';
       const { cx, cy } = getCursorPos(e);
       const hit = hitTest(cx, cy);
       if (hit?.isResize) return 'ew-resize';
-      if (hit) return 'grab';
-      return 'crosshair';
+      if (hit && (activeTool === 'draw' || activeTool === 'select')) return 'grab';
+      return TOOL_CURSORS[activeTool];
     },
     [activeTool, hitTest, getCursorPos]
   );
 
-  const [cursor, setCursor] = useState('crosshair');
+  const [cursor, setCursor] = useState(TOOL_CURSORS.draw);
+  useEffect(() => {
+    setCursor(TOOL_CURSORS[activeTool]);
+  }, [activeTool]);
+
   const handleMouseMoveCursor = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       setCursor(getCursor(e));
@@ -927,4 +958,16 @@ function formatResizeDelta(
   const beats = rp.dT / ppq;
   const sign  = beats > 0 ? '+' : '';
   return `길이 ${sign}${beats.toFixed(beats % 1 === 0 ? 0 : 2)}박`;
+}
+
+function makeSvgCursor(svgBody: string, hotX: number, hotY: number, fallback: string): string {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+      <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.55"/>
+      </filter>
+      <g filter="url(#s)">${svgBody}</g>
+    </svg>
+  `;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${hotX} ${hotY}, ${fallback}`;
 }
