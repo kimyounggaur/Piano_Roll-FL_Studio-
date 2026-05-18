@@ -5,6 +5,8 @@ import type {
   SnapValue, ScaleType,
 } from '../types/music';
 import { ticksPerBar, snapUnitToTicks, snapTick } from '../utils/time';
+import { quantizeNote, humanizeNotes } from '../utils/noteTransforms';
+import { snapPitchToScale } from '../utils/musicTheory';
 import { DEFAULT_PPQ, DEFAULT_BPM } from '../types/music';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -73,6 +75,14 @@ export function createDefaultProject(): Project {
       snapUnit: '1/16',
       scaleRoot: 0,
       scaleName: 'none',
+      scaleSnapEnabled: false,
+      stampChordType: 'major',
+      stampHoldTool: false,
+      stampDurationTicks: 0,
+      quantizeStrength: 1,
+      quantizeDuration: false,
+      humanizeTimingTicks: 20,
+      humanizeVelocity: 10,
     },
     tracks: [track],
     activeTrackId: track.id,
@@ -240,6 +250,18 @@ interface ProjectStore {
    */
   duplicateSelectedNotesInPlace: () => void;
   setVelocityForSelectedNotes: (velocity: number) => void;
+  /**
+   * Pull every selected note toward its nearest grid line.
+   * @param gridTicks  e.g. 480 = 1/4, 120 = 1/16
+   * @param strength   0..1 — 1 fully snaps, 0.5 moves halfway, 0 no change
+   * @param quantizeDuration  also align note length to the grid
+   */
+  quantizeSelectedNotes: (gridTicks: number, strength: number, quantizeDuration?: boolean) => void;
+  /**
+   * Apply small random shifts to startTick / velocity of every selected note.
+   * Pass `seed` for reproducible output.
+   */
+  humanizeSelectedNotes: (timingAmountTicks: number, velocityAmount: number, seed?: number) => void;
 
   // ── transport ────────────────────────────────────────────────────
   setPlayheadTick: (tick: number) => void;
@@ -384,7 +406,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       project: {
         ...s.project,
         tracks: updateTrackNotes(s.project.tracks, trackId, (notes) => [
-          ...notes, { ...note, id: nanoid(), selected: false },
+          ...notes, { selected: false, ...note, id: nanoid() },
         ]),
       },
     })),
@@ -501,6 +523,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const { totalTicks, snapTicks } = get();
     const total = totalTicks();
     const minDur = snapTicks();
+    const { scaleSnapEnabled, scaleName, scaleRoot } = get().project.settings;
     set((s) => ({
       project: {
         ...s.project,
@@ -508,9 +531,13 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           ...t,
           notes: t.notes.map((n) => {
             if (!n.selected) return n;
+            let newPitch = n.pitch + deltaPitch;
+            if (scaleSnapEnabled && scaleName !== 'none') {
+              newPitch = snapPitchToScale(newPitch, scaleRoot, scaleName, 'nearest');
+            }
             return applyNotePatch(
               n,
-              { pitch: n.pitch + deltaPitch, startTick: n.startTick + deltaTicks },
+              { pitch: newPitch, startTick: n.startTick + deltaTicks },
               minDur,
               total,
             );
@@ -612,6 +639,35 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         tracks: updateAllNotes(s.project.tracks, (n) =>
           n.selected ? { ...n, velocity: vel } : n
         ),
+      },
+    }));
+  },
+
+  quantizeSelectedNotes: (gridTicks, strength, quantizeDuration = false) => {
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: updateAllNotes(s.project.tracks, (n) =>
+          n.selected ? quantizeNote(n, { gridTicks, strength, quantizeDuration }) : n
+        ),
+      },
+    }));
+  },
+
+  humanizeSelectedNotes: (timingAmountTicks, velocityAmount, seed) => {
+    set((s) => ({
+      project: {
+        ...s.project,
+        tracks: s.project.tracks.map((t) => {
+          const selected = t.notes.filter((n) => n.selected);
+          if (selected.length === 0) return t;
+          const humanized = humanizeNotes(selected, { timingAmountTicks, velocityAmount, seed });
+          const byId = new Map(humanized.map((n) => [n.id, n]));
+          return {
+            ...t,
+            notes: t.notes.map((n) => byId.get(n.id) ?? n),
+          };
+        }),
       },
     }));
   },

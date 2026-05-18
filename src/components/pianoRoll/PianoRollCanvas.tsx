@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { tickToX, xToTick, pitchToY, yToPitch, clamp, rectsIntersect } from '../../utils/geometry';
 import { snapUnitToTicks } from '../../utils/time';
-import { isBlackKey, isInScale, snapPitchToScale } from '../../utils/musicTheory';
+import { isBlackKey, isInScale, snapPitchToScale, buildChord } from '../../utils/musicTheory';
 import type { Note } from '../../types/music';
 
 const TOTAL_KEYS = 128;
@@ -400,6 +400,36 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         return;
       }
 
+      // ── Stamp tool ───────────────────────────────────────────────────
+      if (activeTool === 'stamp') {
+        if (!activeTrackId) return;
+        const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
+        const dur = settings.stampDurationTicks > 0 ? settings.stampDurationTicks : snapTicks;
+        const rootPitch = clamp(pitch, 0, 127);
+        const chordPitches = buildChord(rootPitch, settings.stampChordType, {
+          scaleSnap: settings.scaleSnapEnabled,
+          scaleRoot: settings.scaleRoot,
+          scaleName: settings.scaleName,
+        });
+        if (!additive) clearSelection();
+        for (const cp of chordPitches) {
+          if (snappedTick >= 0 && snappedTick < totalTicks()) {
+            addNote(activeTrackId, {
+              pitch: cp,
+              startTick: snappedTick,
+              durationTicks: dur,
+              velocity: 100,
+              selected: true,
+            });
+          }
+        }
+        if (!settings.stampHoldTool) {
+          useProjectStore.getState().setTool('draw');
+        }
+        drag.current = { type: 'none', startX: 0, startY: 0 };
+        return;
+      }
+
       // draw tool
       if (hit) {
         if (hit.isResize) {
@@ -431,8 +461,9 @@ export const PianoRollCanvas: React.FC<Props> = ({ width, height }) => {
         // empty area on draw tool → deselect first (unless additive), then add note
         if (!additive) clearSelection();
         const snapTicks = snapUnitToTicks(settings.snapUnit, settings.ppq);
-        const finalPitch = settings.scaleName !== 'none'
-          ? snapPitchToScale(pitch, settings.scaleRoot, settings.scaleName)
+        const scaleOn = settings.scaleSnapEnabled && settings.scaleName !== 'none';
+        const finalPitch = scaleOn
+          ? snapPitchToScale(pitch, settings.scaleRoot, settings.scaleName, 'nearest')
           : clamp(pitch, 0, 127);
         if (activeTrackId && snappedTick >= 0 && snappedTick < totalTicks() && finalPitch >= 0) {
           addNote(activeTrackId, {

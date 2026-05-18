@@ -176,7 +176,36 @@ export interface ProjectSettings {
   scaleRoot: number;
   /** Active scale mode. 'none' disables scale highlighting and snap. */
   scaleName: ScaleType;
+
+  // ── Scale snap ─────────────────────────────────────────────────────
+  /** Force new notes and dragged notes onto the active scale. */
+  scaleSnapEnabled: boolean;
+
+  // ── Chord stamp ────────────────────────────────────────────────────
+  /** Chord type used when the stamp tool is active. */
+  stampChordType: ChordType;
+  /** If true, the stamp tool stays active after each click. */
+  stampHoldTool: boolean;
+  /** Optional fixed duration (in ticks) for stamped chord notes. 0 = use current snapTicks. */
+  stampDurationTicks: number;
+
+  // ── Quantize / humanize defaults (used by the UI controls) ─────────
+  quantizeStrength: number;     // 0..1, default 1
+  quantizeDuration: boolean;    // also quantize note length
+  humanizeTimingTicks: number;  // ± random shift in ticks
+  humanizeVelocity: number;     // ± random delta in velocity units
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  Chord types
+// ═══════════════════════════════════════════════════════════════════
+
+export type ChordType =
+  | 'major' | 'minor' | 'diminished' | 'augmented'
+  | 'sus2'  | 'sus4'
+  | 'major7' | 'minor7' | 'dominant7' | 'diminished7' | 'halfDiminished7'
+  | 'add9'   | 'minorAdd9'
+  | 'powerChord';
 
 
 // ═══════════════════════════════════════════════════════════════════
