@@ -4,7 +4,7 @@
   height: 100%;
   overflow: hidden;
   background:
-    linear-gradient(180deg, rgba(255, 157, 181, 0.035), transparent 28%),
+    linear-gradient(180deg, var(--app-glow), transparent 28%),
     var(--bg-primary);
 }
 
@@ -19,5 +19,5 @@
 
 .app-body > :last-child {
   background: var(--bg-secondary);
-  box-shadow: -8px 0 18px rgba(10, 7, 12, 0.12);
+  box-shadow: var(--shadow-side-left);
 }

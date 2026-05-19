@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import {
   initAudio,
@@ -9,17 +9,30 @@ import {
 } from '../../audio/toneEngine';
 import { formatTickFull } from '../../utils/time';
 import type { SnapUnit } from '../../types/music';
+import {
+  applyThemeMode,
+  getNextThemeMode,
+  readStoredThemeMode,
+  writeStoredThemeMode,
+  type ThemeMode,
+} from '../../themeMode';
 import './TransportBar.css';
 
 const SNAP_OPTIONS: SnapUnit[] = ['1/1','1/2','1/4','1/8','1/16','1/32','1/64','1/4T','1/8T','1/16T'];
 
 export const TransportBar: React.FC = () => {
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredThemeMode());
   const {
     project, isPlaying, isLooping, isMetronome, playheadTick,
     updateSettings, setIsPlaying, setIsLooping, setIsMetronome,
     setPlayheadTick, totalTicks,
   } = useProjectStore();
   const { settings } = project;
+
+  useEffect(() => {
+    applyThemeMode(themeMode);
+    writeStoredThemeMode(themeMode);
+  }, [themeMode]);
 
   const handlePlay = useCallback(async () => {
     // First gesture — unblock browser autoplay before any audio call
@@ -58,6 +71,7 @@ export const TransportBar: React.FC = () => {
   }, [updateSettings]);
 
   const posText  = formatTickFull(playheadTick, settings.timeSignature, settings.ppq);
+  const nextThemeMode = getNextThemeMode(themeMode);
 
   return (
     <div className="transport-bar">
@@ -165,6 +179,23 @@ export const TransportBar: React.FC = () => {
         >
           {SNAP_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
         </select>
+      </div>
+
+      <div className="transport-divider" />
+
+      <div className="transport-section theme-mode-section" aria-label="Theme mode">
+        <button
+          type="button"
+          className="theme-mode-btn"
+          onClick={() => setThemeMode(nextThemeMode)}
+          aria-pressed={themeMode === 'light'}
+          title={`Switch to ${nextThemeMode} mode`}
+        >
+          <span className="theme-mode-icon" aria-hidden="true">
+            {themeMode === 'dark' ? '☾' : '☀'}
+          </span>
+          <span className="theme-mode-text">{themeMode}</span>
+        </button>
       </div>
 
       <div className="transport-section transport-project-name">

@@ -14,6 +14,7 @@
   --bg-surface-soft: #322c3a;
   --bg-canvas: #111018;
   --bg-hover: rgba(255, 153, 181, 0.1);
+  --bg-display: #181520;
 
   --accent: #ff9db5;
   --accent-dark: #3b202b;
@@ -36,6 +37,7 @@
   --border-strong: rgba(251, 244, 247, 0.18);
   --border-accent: rgba(255, 157, 181, 0.34);
   --ring: 0 0 0 1px rgba(255, 157, 181, 0.32);
+  --focus-glow: rgba(255, 157, 181, 0.12);
 
   --danger: #ff6f83;
   --warning: #f6d878;
@@ -57,6 +59,20 @@
 
   --shadow-soft: 0 10px 24px rgba(15, 11, 18, 0.24);
   --shadow-control: 0 2px 8px rgba(15, 11, 18, 0.18);
+  --shadow-side-left: -8px 0 18px rgba(10, 7, 12, 0.12);
+  --active-shadow: 0 4px 14px rgba(255, 157, 181, 0.24);
+
+  --app-glow: rgba(255, 157, 181, 0.035);
+  --bar-sheen: rgba(255, 255, 255, 0.03);
+  --control-inset: rgba(255, 255, 255, 0.025);
+  --tooltip-bg: #211d27;
+  --scrollbar-track: rgba(17, 16, 24, 0.65);
+  --scrollbar-thumb: rgba(185, 173, 201, 0.34);
+  --project-bg: rgba(158, 231, 216, 0.08);
+  --project-border: rgba(158, 231, 216, 0.22);
+  --piano-roll-seam: rgba(255, 157, 181, 0.06);
+  --canvas-edge-shadow: rgba(251, 244, 247, 0.06);
+  --velocity-bg: #14121b;
 
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -70,6 +86,76 @@
   --velocity-height: 100px;
   --track-panel-w: 214px;
   --inspector-w: 168px;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-primary: #fff8fa;
+  --bg-secondary: #fff1f5;
+  --bg-surface: #ffffff;
+  --bg-surface-soft: #fff6f8;
+  --bg-canvas: #fffafc;
+  --bg-hover: rgba(255, 135, 166, 0.12);
+  --bg-display: #fffafd;
+
+  --accent: #e95f88;
+  --accent-dark: #fff9fb;
+  --accent-dim: #d94f78;
+  --accent-subtle: rgba(233, 95, 136, 0.12);
+  --accent-border: rgba(233, 95, 136, 0.32);
+
+  --mint: #348f82;
+  --mint-subtle: rgba(52, 143, 130, 0.12);
+  --coral: #e87559;
+  --butter: #d8a817;
+  --lavender: #7a6a89;
+
+  --text-primary: #2f2534;
+  --text-secondary: #5b4b60;
+  --text-muted: #827287;
+  --text-disabled: #b7aab9;
+
+  --border: rgba(74, 54, 82, 0.12);
+  --border-strong: rgba(74, 54, 82, 0.2);
+  --border-accent: rgba(233, 95, 136, 0.32);
+  --ring: 0 0 0 1px rgba(233, 95, 136, 0.3);
+  --focus-glow: rgba(233, 95, 136, 0.16);
+
+  --danger: #cf3f58;
+  --warning: #c79613;
+  --positive: #348f82;
+  --info-bg: rgba(52, 143, 130, 0.1);
+
+  --note-default: #e95f88;
+  --note-selected: #d8a817;
+  --ghost-note: rgba(52, 143, 130, 0.24);
+
+  --black-key: #3a2e42;
+  --black-key-side: #51455a;
+  --white-key: #fffdfd;
+  --white-key-scale: #e9fbf5;
+
+  --grid-bar: rgba(74, 54, 82, 0.2);
+  --grid-beat: rgba(74, 54, 82, 0.09);
+  --grid-snap: rgba(74, 54, 82, 0.04);
+
+  --shadow-soft: 0 10px 24px rgba(116, 82, 104, 0.14);
+  --shadow-control: 0 2px 8px rgba(116, 82, 104, 0.12);
+  --shadow-side-left: -8px 0 18px rgba(116, 82, 104, 0.1);
+  --active-shadow: 0 4px 14px rgba(233, 95, 136, 0.2);
+
+  --app-glow: rgba(255, 135, 166, 0.18);
+  --bar-sheen: rgba(255, 255, 255, 0.68);
+  --control-inset: rgba(255, 255, 255, 0.82);
+  --tooltip-bg: #fff7fa;
+  --scrollbar-track: rgba(255, 241, 245, 0.9);
+  --scrollbar-thumb: rgba(233, 95, 136, 0.28);
+  --project-bg: rgba(52, 143, 130, 0.1);
+  --project-border: rgba(52, 143, 130, 0.22);
+  --piano-roll-seam: rgba(233, 95, 136, 0.12);
+  --canvas-edge-shadow: rgba(74, 54, 82, 0.08);
+  --velocity-bg: #fff4f7;
 }
 
 html, body, #root {
@@ -129,7 +215,7 @@ input[type='text'] {
   padding: 4px 8px;
   font: inherit;
   font-feature-settings: "calt" 1;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  box-shadow: inset 0 1px 0 var(--control-inset);
   transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
 }
 
@@ -144,7 +230,7 @@ select:focus,
 input:focus {
   outline: none;
   border-color: var(--accent-border);
-  box-shadow: var(--ring), 0 0 0 3px rgba(255, 157, 181, 0.12);
+  box-shadow: var(--ring), 0 0 0 3px var(--focus-glow);
 }
 
 input[type='checkbox'] {
@@ -179,12 +265,12 @@ input[type='range'] {
   height: 7px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(17, 16, 24, 0.65);
+  background: var(--scrollbar-track);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(185, 173, 201, 0.34);
+  background: var(--scrollbar-thumb);
   border-radius: var(--radius-pill);
-  border: 2px solid rgba(17, 16, 24, 0.65);
+  border: 2px solid var(--scrollbar-track);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-border);
@@ -216,7 +302,7 @@ input[type='range'] {
   left: 50%;
   bottom: calc(100% + 6px);
   transform: translateX(-50%) translateY(2px);
-  background: #211d27;
+  background: var(--tooltip-bg);
   color: var(--text-primary);
   font-size: 11px;
   font-weight: 600;

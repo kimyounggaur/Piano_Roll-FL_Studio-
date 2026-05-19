@@ -9,7 +9,7 @@
   flex-shrink: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+  box-shadow: 0 1px 0 var(--bar-sheen);
 }
 
 .transport-section {
@@ -52,17 +52,17 @@
   background: var(--accent);
   color: var(--accent-dark);
   border-color: transparent;
-  box-shadow: 0 4px 14px rgba(255, 157, 181, 0.24);
+  box-shadow: var(--active-shadow);
 }
 
 .transport-position {
   min-width: 92px;
   justify-content: center;
-  background: #181520;
+  background: var(--bg-display);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
   padding: 6px 12px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 1px 0 var(--control-inset);
 }
 
 .position-display {
@@ -94,13 +94,60 @@
   margin-left: auto;
 }
 
+.theme-mode-section {
+  gap: 0;
+}
+
+.theme-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  max-width: 112px;
+  padding: 6px 11px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: var(--shadow-control);
+}
+
+.theme-mode-btn:hover {
+  background: var(--accent-subtle);
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
+.theme-mode-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-dark);
+  font-size: 11px;
+}
+
+.theme-mode-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+}
+
 .project-name {
   display: inline-block;
   font-size: 11px;
   font-weight: 700;
   color: var(--text-secondary);
-  background: rgba(158, 231, 216, 0.08);
-  border: 1px solid rgba(158, 231, 216, 0.22);
+  background: var(--project-bg);
+  border: 1px solid var(--project-border);
   border-radius: var(--radius-pill);
   padding: 5px 12px;
   max-width: 170px;
