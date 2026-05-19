@@ -30,15 +30,15 @@ export interface ShortcutSpec {
 
 export const SNAP_KEY_TO_UNIT: Record<string, SnapValue> = {
   '1': '1/1',
-  '2': '1/4',
-  '3': '1/8',
-  '4': '1/16',
-  '5': '1/32',
-  '6': '1/64',
-  '7': '1/8T',
-  '8': '1/16T',
-  '9': '1/32T',
-  '0': '1/64T',
+  '2': '1/2',
+  '3': '1/4',
+  '4': '1/8',
+  '5': '1/16',
+  '6': '1/32',
+  '7': '1/64',
+  '8': '1/8T',
+  '9': '1/16T',
+  '0': '1/32T',
 };
 
 export const SHORTCUT_CATALOG: ShortcutSpec[] = [
@@ -78,8 +78,8 @@ export const SHORTCUT_CATALOG: ShortcutSpec[] = [
   { keys: '← / →',           description: '선택 노트 한 grid 이동',   group: 'move' },
   { keys: 'Shift + ← / →',   description: '선택 노트 길이 조절',      group: 'move' },
   { keys: 'Ctrl/⌘ + +/-',    description: '가로 줌 인/아웃',          group: 'view' },
-  { keys: '1-6',             description: '스냅: 1/1, 1/4, 1/8, 1/16, 1/32, 1/64', group: 'view' },
-  { keys: '7 / 8 / 9 / 0',   description: '스냅: 1/8T / 1/16T / 1/32T / 1/64T', group: 'view' },
+  { keys: '1-7',             description: '스냅: 1/1, 1/2, 1/4, 1/8, 1/16, 1/32, 1/64', group: 'view' },
+  { keys: '8 / 9 / 0',       description: '스냅: 1/8T / 1/16T / 1/32T', group: 'view' },
   { keys: '?',               description: '단축키 도움말',            group: 'view' },
 ];
 
