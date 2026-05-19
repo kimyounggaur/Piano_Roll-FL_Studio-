@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useProjectStore } from '../store/projectStore';
-import type { Note, PianoRollTool, SnapValue } from '../types/music';
+import type { Note, PianoRollTool, SnapValue, ActiveView } from '../types/music';
 import { dispatchOpenToolDialog, quickChopNotes, type ToolDialogKind } from '../components/pianoRoll/toolsMenuModel';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -81,6 +81,9 @@ export const SHORTCUT_CATALOG: ShortcutSpec[] = [
   { keys: '1-7',             description: '스냅: 1/1, 1/2, 1/4, 1/8, 1/16, 1/32, 1/64', group: 'view' },
   { keys: '8 / 9 / 0',       description: '스냅: 1/8T / 1/16T / 1/32T', group: 'view' },
   { keys: '?',               description: '단축키 도움말',            group: 'view' },
+  { keys: 'F1',             description: 'MIDI 롤 뷰',               group: 'view' },
+  { keys: 'F2',             description: '오디오 편집 뷰',            group: 'view' },
+  { keys: 'F3',             description: '오토메이션 뷰',             group: 'view' },
 ];
 
 // ═══════════════════════════════════════════════════════════════════
@@ -144,6 +147,23 @@ export function usePianoRollShortcuts(onShowHelp?: () => void): void {
       if (key === '?' && !mod) {
         e.preventDefault();
         helpRef.current?.();
+        return;
+      }
+
+      // ── view switching (F1/F2/F3) ────────────────────────────
+      if (key === 'F1') {
+        e.preventDefault();
+        useProjectStore.getState().setActiveView('piano-roll' as ActiveView);
+        return;
+      }
+      if (key === 'F2') {
+        e.preventDefault();
+        useProjectStore.getState().setActiveView('audio-edit' as ActiveView);
+        return;
+      }
+      if (key === 'F3') {
+        e.preventDefault();
+        useProjectStore.getState().setActiveView('automation' as ActiveView);
         return;
       }
 

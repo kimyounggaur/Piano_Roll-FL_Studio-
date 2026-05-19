@@ -423,3 +423,72 @@ export const DEFAULT_LOW_PITCH:  MidiPitch = 24;
 export const DEFAULT_HIGH_PITCH: MidiPitch = 96;
 export const DEFAULT_PPQ = 480;
 export const DEFAULT_BPM = 120;
+
+// ═══════════════════════════════════════════════════════════════════
+//  Active View — 멀티패널 전환
+// ═══════════════════════════════════════════════════════════════════
+export type ActiveView = 'piano-roll' | 'audio-edit' | 'automation';
+
+// ═══════════════════════════════════════════════════════════════════
+//  Audio Clip / Region  (Logic Pro 스타일)
+// ═══════════════════════════════════════════════════════════════════
+export interface AudioRegion {
+  id: string;
+  trackId: string;
+  startTick: number;
+  durationTicks: number;
+  name: string;
+  audioBuffer?: AudioBuffer;
+  waveformPeaks?: Float32Array;
+  gain: number;
+  fadeInTicks: number;
+  fadeOutTicks: number;
+  muted: boolean;
+  looped: boolean;
+  color: string;
+  pitchSemitones: number;
+  timewarpFactor: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Automation  (Ableton / Studio One 스타일)
+// ═══════════════════════════════════════════════════════════════════
+export type AutomationCurveType = 'linear' | 'step' | 'smooth' | 'hold';
+export type AutomationRecordMode = 'off' | 'latch' | 'touch' | 'write';
+
+export interface AutomationPoint {
+  id: string;
+  tick: number;
+  value: number;
+  curveType: AutomationCurveType;
+  tension?: number;
+}
+
+export type AutomationParameterCategory =
+  | 'volume' | 'pan' | 'pitch' | 'filter' | 'reverb' | 'delay' | 'custom';
+
+export interface AutomationLane {
+  id: string;
+  trackId: string;
+  parameterId: string;
+  parameterName: string;
+  category: AutomationParameterCategory;
+  minValue: number;
+  maxValue: number;
+  defaultValue: number;
+  unit: string;
+  points: AutomationPoint[];
+  color: string;
+  visible: boolean;
+  enabled: boolean;
+  recordMode: AutomationRecordMode;
+}
+
+export interface ModulationMapping {
+  id: string;
+  sourceType: 'lfo' | 'envelope' | 'midi-cc' | 'velocity' | 'keytrack';
+  sourceId: string;
+  targetLaneId: string;
+  depth: number;
+  enabled: boolean;
+}

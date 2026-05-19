@@ -3,6 +3,8 @@ import type {
   Project, Track, Note, NoteId, TrackId,
   ProjectSettings, PianoRollViewport, PianoRollTool,
   SnapValue, ScaleType,
+  ActiveView, AudioRegion, AutomationLane, AutomationPoint,
+  AutomationRecordMode, ModulationMapping,
 } from '../types/music';
 import { ticksPerBar, snapUnitToTicks, snapTick } from '../utils/time';
 import { quantizeNote, humanizeNotes, strumNotes, arpeggiateNotes, randomizeVelocity, scaleVelocity,
@@ -205,6 +207,11 @@ function updateAllNotes(
 ): Track[] {
   return tracks.map((t) => ({ ...t, notes: t.notes.map(fn) }));
 }
+
+// Stable empty arrays for Zustand v5 selectors — never use `?? []` inside a selector.
+const EMPTY_AUDIO_REGIONS: AudioRegion[] = [];
+const EMPTY_AUTOMATION_LANES: AutomationLane[] = [];
+const EMPTY_MODULATION_MAPPINGS: ModulationMapping[] = [];
 
 // ═══════════════════════════════════════════════════════════════════
 //  Store interface
@@ -505,6 +512,33 @@ interface ProjectStore {
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
+
+  // ── Active view (멀티패널 전환) ──────────────────────────────────
+  activeView: ActiveView;
+  setActiveView: (v: ActiveView) => void;
+
+  // ── Audio Regions (Logic Pro 스타일) ─────────────────────────────
+  audioRegions: AudioRegion[];
+  addAudioRegion: (region: Omit<AudioRegion, 'id'>) => void;
+  removeAudioRegion: (id: string) => void;
+  updateAudioRegion: (id: string, partial: Partial<AudioRegion>) => void;
+  setAudioRegionWaveform: (id: string, peaks: Float32Array) => void;
+  splitAudioRegion: (id: string, atTick: number) => void;
+
+  // ── Automation (Ableton / Studio One 스타일) ──────────────────────
+  automationLanes: AutomationLane[];
+  addAutomationLane: (lane: Omit<AutomationLane, 'id' | 'points'>) => void;
+  removeAutomationLane: (id: string) => void;
+  addAutomationPoint: (laneId: string, point: Omit<AutomationPoint, 'id'>) => void;
+  removeAutomationPoint: (laneId: string, pointId: string) => void;
+  updateAutomationPoint: (laneId: string, pointId: string, partial: Partial<AutomationPoint>) => void;
+  setAutomationPoints: (laneId: string, points: AutomationPoint[]) => void;
+  toggleAutomationLane: (id: string) => void;
+  setAutomationRecordMode: (laneId: string, mode: AutomationRecordMode) => void;
+  modulationMappings: ModulationMapping[];
+  addModulationMapping: (m: Omit<ModulationMapping, 'id'>) => void;
+  removeModulationMapping: (id: string) => void;
+  updateModulationMapping: (id: string, partial: Partial<ModulationMapping>) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2053,6 +2087,124 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   canUndo: () => get()._undoStack.length > 0,
   canRedo: () => get()._redoStack.length > 0,
+
+  // ── Active view ────────────────────────────────────────────────
+  activeView: 'piano-roll',
+  setActiveView: (v) => set({ activeView: v }),
+
+  // ── Audio Regions ──────────────────────────────────────────────
+  audioRegions: EMPTY_AUDIO_REGIONS,
+
+  addAudioRegion: (region) =>
+    set((s) => ({
+      audioRegions: [...s.audioRegions, { ...region, id: nanoid() }],
+    })),
+
+  removeAudioRegion: (id) =>
+    set((s) => ({ audioRegions: s.audioRegions.filter((r) => r.id !== id) })),
+
+  updateAudioRegion: (id, partial) =>
+    set((s) => ({
+      audioRegions: s.audioRegions.map((r) => r.id === id ? { ...r, ...partial } : r),
+    })),
+
+  setAudioRegionWaveform: (id, peaks) =>
+    set((s) => ({
+      audioRegions: s.audioRegions.map((r) =>
+        r.id === id ? { ...r, waveformPeaks: peaks } : r),
+    })),
+
+  splitAudioRegion: (id, atTick) =>
+    set((s) => {
+      const region = s.audioRegions.find((r) => r.id === id);
+      if (!region) return s;
+      if (atTick <= region.startTick || atTick >= region.startTick + region.durationTicks) return s;
+      const leftDuration = atTick - region.startTick;
+      const rightDuration = region.durationTicks - leftDuration;
+      const left: AudioRegion = { ...region, durationTicks: leftDuration, waveformPeaks: undefined, audioBuffer: undefined };
+      const right: AudioRegion = {
+        ...region,
+        id: nanoid(),
+        startTick: atTick,
+        durationTicks: rightDuration,
+        waveformPeaks: undefined,
+        audioBuffer: undefined,
+      };
+      return { audioRegions: s.audioRegions.map((r) => r.id === id ? left : r).concat(right) };
+    }),
+
+  // ── Automation Lanes ───────────────────────────────────────────
+  automationLanes: EMPTY_AUTOMATION_LANES,
+
+  addAutomationLane: (lane) => {
+    const track = get().project.tracks.find((t) => t.id === lane.trackId);
+    const color = track?.color ?? '#9fe870';
+    set((s) => ({
+      automationLanes: [...s.automationLanes, {
+        ...lane,
+        id: nanoid(),
+        points: [],
+        color,
+      }],
+    }));
+  },
+
+  removeAutomationLane: (id) =>
+    set((s) => ({ automationLanes: s.automationLanes.filter((l) => l.id !== id) })),
+
+  addAutomationPoint: (laneId, point) =>
+    set((s) => ({
+      automationLanes: s.automationLanes.map((l) =>
+        l.id === laneId
+          ? { ...l, points: [...l.points, { ...point, id: nanoid() }].sort((a, b) => a.tick - b.tick) }
+          : l),
+    })),
+
+  removeAutomationPoint: (laneId, pointId) =>
+    set((s) => ({
+      automationLanes: s.automationLanes.map((l) =>
+        l.id === laneId ? { ...l, points: l.points.filter((p) => p.id !== pointId) } : l),
+    })),
+
+  updateAutomationPoint: (laneId, pointId, partial) =>
+    set((s) => ({
+      automationLanes: s.automationLanes.map((l) =>
+        l.id === laneId
+          ? { ...l, points: l.points.map((p) => p.id === pointId ? { ...p, ...partial } : p).sort((a, b) => a.tick - b.tick) }
+          : l),
+    })),
+
+  setAutomationPoints: (laneId, points) =>
+    set((s) => ({
+      automationLanes: s.automationLanes.map((l) =>
+        l.id === laneId ? { ...l, points: [...points].sort((a, b) => a.tick - b.tick) } : l),
+    })),
+
+  toggleAutomationLane: (id) =>
+    set((s) => ({
+      automationLanes: s.automationLanes.map((l) =>
+        l.id === id ? { ...l, enabled: !l.enabled } : l),
+    })),
+
+  setAutomationRecordMode: (laneId, mode) =>
+    set((s) => ({
+      automationLanes: s.automationLanes.map((l) =>
+        l.id === laneId ? { ...l, recordMode: mode } : l),
+    })),
+
+  // ── Modulation Mappings ────────────────────────────────────────
+  modulationMappings: EMPTY_MODULATION_MAPPINGS,
+
+  addModulationMapping: (m) =>
+    set((s) => ({ modulationMappings: [...s.modulationMappings, { ...m, id: nanoid() }] })),
+
+  removeModulationMapping: (id) =>
+    set((s) => ({ modulationMappings: s.modulationMappings.filter((m) => m.id !== id) })),
+
+  updateModulationMapping: (id, partial) =>
+    set((s) => ({
+      modulationMappings: s.modulationMappings.map((m) => m.id === id ? { ...m, ...partial } : m),
+    })),
 }));
 
 // ═══════════════════════════════════════════════════════════════════

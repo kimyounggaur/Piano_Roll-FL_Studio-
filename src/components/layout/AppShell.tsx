@@ -7,6 +7,8 @@ import { DrumSequencer } from '../pianoRoll/DrumSequencer';
 import { PatternPanel } from '../panels/PatternPanel';
 import { GhostChannelPanel } from '../panels/GhostChannelPanel';
 import { ImportExportPanel } from '../panels/ImportExportPanel';
+import { AudioClipEditor } from '../audioEdit/AudioClipEditor';
+import { AutomationPanel } from '../automation/AutomationPanel';
 import { RestorePrompt } from './RestorePrompt';
 import { useAutosave } from '../../hooks/useAutosave';
 import { usePerformanceModeReschedule } from '../../hooks/usePerformanceModeReschedule';
@@ -22,19 +24,30 @@ export const AppShell: React.FC = () => {
   const activeTrack = useProjectStore((s) =>
     s.project.tracks.find((t) => t.id === s.project.activeTrackId) ?? null
   );
+  const activeView = useProjectStore((s) => s.activeView);
   const isDrum = activeTrack?.trackKind === 'drum';
 
   const [tab, setTab] = useState<RightTab>('inspector');
+
+  const renderMainView = () => {
+    if (activeView === 'audio-edit') return <AudioClipEditor />;
+    if (activeView === 'automation') return <AutomationPanel />;
+    if (isDrum && activeTrack) {
+      return (
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <DrumSequencer track={activeTrack} bars={2} />
+        </div>
+      );
+    }
+    return <PianoRoll />;
+  };
 
   return (
     <div className="app-shell">
       <TransportBar />
       <div className="app-body">
         <TrackPanel />
-        {isDrum && activeTrack
-          ? <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}><DrumSequencer track={activeTrack} bars={2} /></div>
-          : <PianoRoll />
-        }
+        {renderMainView()}
         <div style={{ width: 'var(--inspector-w, 240px)', display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
             {(['inspector', 'patterns', 'ghosts', 'files'] as const).map((t) => (

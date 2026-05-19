@@ -1,0 +1,307 @@
+/* AudioClipEditor — Logic Pro 스타일 */
+:root {
+  --clip-h: 72px;
+  --ruler-h: 16px;
+  --label-w: 72px;
+}
+
+.audio-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  background: #0e0f0c;
+  color: #e8ebe6;
+}
+
+.audio-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border, #2b2c28);
+  background: #111310;
+  flex-shrink: 0;
+}
+
+.audio-editor-toolbar .tool-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: transparent;
+  color: #b8bcb5;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 100ms;
+}
+.audio-editor-toolbar .tool-btn:hover {
+  background: rgba(255,255,255,0.08);
+}
+.audio-editor-toolbar .tool-btn.active {
+  background: rgba(159,232,112,0.18);
+  border-color: #9fe870;
+  color: #9fe870;
+}
+
+.audio-editor-toolbar .divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border, #2b2c28);
+  margin: 0 6px;
+}
+
+.audio-editor-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #9aa399;
+  cursor: pointer;
+}
+
+.audio-editor-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.audio-track-labels {
+  width: var(--label-w);
+  flex-shrink: 0;
+  border-right: 1px solid var(--border, #2b2c28);
+  overflow: hidden;
+  padding-top: var(--ruler-h);
+}
+
+.audio-track-label {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border, #2b2c28);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #e8ebe6;
+  background: #111310;
+}
+
+.audio-scroll-area {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.audio-ruler {
+  height: var(--ruler-h);
+  background: #111310;
+  border-bottom: 1px solid var(--border, #2b2c28);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.audio-track-lane {
+  position: relative;
+  border-bottom: 1px solid var(--border, #2b2c28);
+  box-sizing: border-box;
+}
+
+.audio-track-lane.even { background: #0e0f0c; }
+.audio-track-lane.odd  { background: #111310; }
+
+.audio-track-lane.drop-active {
+  background: rgba(159,232,112,0.06);
+  outline: 2px dashed rgba(159,232,112,0.4);
+  outline-offset: -2px;
+}
+
+.audio-region-block {
+  position: absolute;
+  top: 2px;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
+  cursor: pointer;
+  user-select: none;
+}
+
+.audio-region-block.selected {
+  box-shadow: inset 0 0 0 1px #9fe870;
+}
+
+.audio-region-block.muted {
+  opacity: 0.4;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(0,0,0,0.3) 0px,
+    rgba(0,0,0,0.3) 2px,
+    transparent 2px,
+    transparent 8px
+  );
+}
+
+.audio-region-color-bar {
+  height: 4px;
+  width: 100%;
+}
+
+.audio-region-name {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.audio-region-name-input {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 11px;
+  background: #0e0f0c;
+  color: #e8ebe6;
+  border: 1px solid #9fe870;
+  border-radius: 2px;
+  padding: 1px 4px;
+  width: calc(100% - 12px);
+  z-index: 10;
+}
+
+.audio-region-resize-left,
+.audio-region-resize-right {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 5;
+}
+.audio-region-resize-left  { left: 0; }
+.audio-region-resize-right { right: 0; }
+
+.fade-handle {
+  position: absolute;
+  top: 4px;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ew-resize;
+  color: rgba(255,255,255,0.6);
+  font-size: 10px;
+  z-index: 6;
+}
+.fade-handle.fade-in  { left: 10px; }
+.fade-handle.fade-out { right: 10px; }
+
+.loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 11px;
+  color: #9aa399;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinner-icon {
+  display: inline-block;
+  margin-right: 6px;
+  animation: spin 1s linear infinite;
+}
+
+/* Inspector pane */
+.audio-inspector {
+  width: 220px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border, #2b2c28);
+  background: #0e0f0c;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.audio-inspector h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #9fe870;
+}
+
+.audio-inspector .empty-hint {
+  font-size: 12px;
+  color: #9aa399;
+  text-align: center;
+  margin-top: 40px;
+}
+
+.inspector-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.inspector-row label {
+  width: 64px;
+  font-size: 11px;
+  color: #9aa399;
+  flex-shrink: 0;
+}
+
+.inspector-row input[type="range"] {
+  flex: 1;
+  accent-color: #9fe870;
+}
+
+.inspector-row .val {
+  font-size: 11px;
+  color: #e8ebe6;
+  width: 48px;
+  text-align: right;
+}
+
+.inspector-row input[type="text"],
+.inspector-row input[type="number"] {
+  flex: 1;
+  background: #16170f;
+  color: #e8ebe6;
+  border: 1px solid var(--border, #2b2c28);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.inspector-toggle-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.inspector-toggle-row button {
+  flex: 1;
+  padding: 4px 0;
+  font-size: 11px;
+  background: #16170f;
+  color: #b8bcb5;
+  border: 1px solid var(--border, #2b2c28);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.inspector-toggle-row button.active {
+  background: rgba(159,232,112,0.18);
+  color: #9fe870;
+  border-color: #9fe870;
+}
