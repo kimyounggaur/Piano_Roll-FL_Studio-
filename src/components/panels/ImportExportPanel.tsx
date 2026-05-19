@@ -36,6 +36,44 @@ export const ImportExportPanel: React.FC = () => {
     colorGroups: colorFilter ? Array.from(colorFilter) : undefined,
   });
 
+  /** Color groups (0..15) that actually contain notes in the current project. */
+  const usedColorGroups = (() => {
+    const counts = new Map<number, number>();
+    for (const t of project.tracks) {
+      for (const n of t.notes) {
+        const raw = n.colorGroup;
+        const g = (raw == null || raw === '') ? 0 : (parseInt(String(raw), 10) || 0);
+        counts.set(g, (counts.get(g) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries()).sort((a, b) => a[0] - b[0]);
+  })();
+
+  /** One-click "export only this color" — bypasses the multi-select filter. */
+  const exportSingleColor = (
+    group: number,
+    kind: 'mid' | 'musicxml' | 'mxl',
+  ) => {
+    setError(null);
+    if (!guardHasNotes()) return;
+    const opts = {
+      excludeMutedNotes,
+      excludeMutedTracks,
+      colorGroups: [group],
+      fileName: `${defaultBase()}-color${group}`,
+    };
+    try {
+      const { blob, fileName } =
+        kind === 'mid'      ? exportMidi(project, opts)      :
+        kind === 'musicxml' ? exportMusicXml(project, opts)  :
+                              exportMxl(project, opts);
+      downloadBlob(blob, fileName);
+    } catch (err) {
+      console.error(err);
+      setError(`색상 ${group} 내보내기 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+    }
+  };
+
   // ─────────────────────────────────────────────────────────────────
   //  Import
   // ─────────────────────────────────────────────────────────────────
@@ -224,6 +262,60 @@ export const ImportExportPanel: React.FC = () => {
             .mxl로 저장
           </button>
         </div>
+
+        {/* ── Per-color one-click export ──────────────────────────────────
+            For every color group that actually appears in the project,
+            this row offers three direct-download buttons that bypass the
+            multi-select filter above.  This is the fastest way to
+            "동일 색상 노트만 내보내기" — one click → one file. */}
+        {usedColorGroups.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, marginBottom: 6, color: '#cdffad' }}>
+              색상별 빠른 내보내기
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {usedColorGroups.map(([group, count]) => (
+                <div
+                  key={group}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '18px 1fr auto auto auto',
+                    gap: 6,
+                    alignItems: 'center',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 16, height: 16, borderRadius: 4,
+                      background: group === 0 ? 'transparent' : NOTE_COLOR_GROUPS[group],
+                      border: '1px solid #2b2c28',
+                      display: 'inline-block',
+                    }}
+                    title={group === 0 ? '그룹 없음 (트랙 색)' : `그룹 ${group}`}
+                  />
+                  <span style={{ fontSize: 11, color: '#a99aad' }}>
+                    {group === 0 ? '그룹 없음' : `그룹 ${group}`} · 노트 {count}개
+                  </span>
+                  <button
+                    onClick={() => exportSingleColor(group, 'mid')}
+                    style={smallButtonStyle}
+                    title="이 색상의 노트만 .mid로 저장"
+                  >.mid</button>
+                  <button
+                    onClick={() => exportSingleColor(group, 'musicxml')}
+                    style={smallButtonStyle}
+                    title="이 색상의 노트만 .musicxml로 저장"
+                  >.xml</button>
+                  <button
+                    onClick={() => exportSingleColor(group, 'mxl')}
+                    style={smallButtonStyle}
+                    title="이 색상의 노트만 .mxl로 저장"
+                  >.mxl</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* ── Project JSON save/load ─────────────────────────────── */}
@@ -288,6 +380,18 @@ const buttonStyle: React.CSSProperties = {
   marginTop: 6, padding: '6px 10px', background: '#9fe870', color: '#163300',
   border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600,
 };
+const smallButtonStyle: React.CSSProperties = {
+  padding: '2px 6px', fontSize: 10, background: '#1c1f18',
+  color: '#cdffad', border: '1px solid #2b2c28',
+  borderRadius: 3, cursor: 'pointer', fontWeight: 600,
+};
+
+function defaultBase(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `rolllab-project-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 const errorStyle: React.CSSProperties = {
   marginTop: 8, padding: 8, background: 'rgba(208,50,56,0.15)',
   border: '1px solid #d03238', borderRadius: 4, color: '#ffb2b5', fontSize: 12,
