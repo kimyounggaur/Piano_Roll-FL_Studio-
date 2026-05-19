@@ -4,7 +4,7 @@ import type {
   ProjectSettings, PianoRollViewport, PianoRollTool,
   SnapValue, ScaleType,
   ActiveView, AudioRegion, AutomationLane, AutomationPoint,
-  AutomationRecordMode, ModulationMapping,
+  AutomationRecordMode, ModulationMapping, MidiClip,
 } from '../types/music';
 import { ticksPerBar, snapUnitToTicks, snapTick } from '../utils/time';
 import { quantizeNote, humanizeNotes, strumNotes, arpeggiateNotes, randomizeVelocity, scaleVelocity,
@@ -17,6 +17,11 @@ import { DEFAULT_PPQ, DEFAULT_BPM } from '../types/music';
 import { buildTracksFromImport, type ImportedMidi } from '../utils/midiFile';
 import { generateProgression, type ProgressionOptions } from '../utils/chordProgression';
 import { generateRiff as generateRiffNotes, type RiffOptions } from '../utils/riffMachine';
+import type {
+  PlaylistViewState, PlaylistMarker, MarkerType,
+  ClipboardClip, PerformanceModeState, PerformanceQuantize,
+  TrackGroup, PickerPanelState, AudioDropBehavior,
+} from '../types/playlist';
 
 // ═══════════════════════════════════════════════════════════════════
 //  Selection rect (tick-space, not pixel-space)
@@ -212,6 +217,54 @@ function updateAllNotes(
 const EMPTY_AUDIO_REGIONS: AudioRegion[] = [];
 const EMPTY_AUTOMATION_LANES: AutomationLane[] = [];
 const EMPTY_MODULATION_MAPPINGS: ModulationMapping[] = [];
+const EMPTY_MIDI_CLIPS: MidiClip[] = [];
+
+const DEFAULT_PLAYLIST_VIEW: PlaylistViewState = {
+  gridColor: '#2a2e26',
+  gridContrast: 'medium',
+  invertGrid: false,
+  showTrackSeparators: true,
+  timeSegmentUnit: 'bars',
+  keepLabelsOnScreen: true,
+  contentInTitleBars: false,
+  clipBehindStyle: 'plain',
+  showShadow: true,
+  trackHeightPercent: 100,
+  hideCollapsedGroups: false,
+  showFadePreviews: true,
+  showGainValue: false,
+  showGainScale: false,
+  showGainPreviews: false,
+  incrementalScrolling: false,
+  preciseTimeIndicator: false,
+  performanceClipProgress: true,
+  performanceTrackProgress: true,
+  miniPreviewEnabled: false,
+  miniPreviewDoubleHeight: false,
+  miniPreviewShowTimeMarkers: true,
+  showControlsOnAudioTracks: true,
+  showLevelsOnAudioTracks: false,
+  showLevelsOnInstrumentTracks: false,
+  snapMode: 'main',
+};
+
+const DEFAULT_PERFORMANCE_MODE: PerformanceModeState = {
+  enabled: false,
+  quantize: 'off',
+  detached: false,
+  activeClips: {},
+};
+
+const DEFAULT_PICKER_PANEL: PickerPanelState = {
+  visible: false,
+  dockRight: false,
+  width: 200,
+  showEmptyPatterns: false,
+  autoGroupPatterns: false,
+  sortMode: 'name',
+  editTarget: 'automatic',
+  adjustStartTime: false,
+};
 
 // ═══════════════════════════════════════════════════════════════════
 //  Store interface
@@ -524,6 +577,99 @@ interface ProjectStore {
   updateAudioRegion: (id: string, partial: Partial<AudioRegion>) => void;
   setAudioRegionWaveform: (id: string, peaks: Float32Array) => void;
   splitAudioRegion: (id: string, atTick: number) => void;
+
+  // ── MIDI Clips (Arrangement) ──────────────────────────────────────
+  midiClips: MidiClip[];
+  addMidiClipFromTrack: (trackId: string, startTick?: number) => void;
+  removeMidiClip: (id: string) => void;
+  updateMidiClip: (id: string, patch: Partial<Omit<MidiClip, 'id'>>) => void;
+
+  // ── Playlist view / arrangement state ───────────────────────────
+  playlistView: PlaylistViewState;
+  setPlaylistView: (partial: Partial<PlaylistViewState>) => void;
+  arrangementScrollX: number;
+  arrangementScrollY: number;
+  arrangementZoomX: number;
+  setArrangementScroll: (x: number, y: number) => void;
+  setArrangementZoomX: (z: number) => void;
+  arrangementPixelsPerTick: () => number;
+
+  // ── Playlist clip selection ─────────────────────────────────────
+  selectedClipIds: Set<string>;
+  selectClip: (id: string, additive: boolean) => void;
+  deselectAllClips: () => void;
+  selectAllClips: () => void;
+  selectClipsInRect: (startTick: number, endTick: number, trackIds: string[]) => void;
+  selectMutedClips: () => void;
+  selectOverlappingClips: () => void;
+  selectStackedClips: () => void;
+  invertClipSelection: () => void;
+  selectTimeAroundSelection: () => void;
+  selectTimeRange: (startTick: number, endTick: number) => void;
+  selectAdjacentTime: (dir: 'prev' | 'next') => void;
+  selectBySource: (sourceClipId: string) => void;
+
+  // ── Playlist clip editing ───────────────────────────────────────
+  moveSelectedClips: (deltaTick: number, deltaTrackIndex: number) => void;
+  shiftSelectedClips: (dir: 'left' | 'right' | 'up' | 'down', amount?: number) => void;
+  nudgeSelectedClipsWithWheel: (deltaTick: number) => void;
+  duplicateSelectedClips: () => void;
+  deleteSelectedClips: () => void;
+  toggleSelectedClipsMute: () => void;
+  insertSpace: (atTick: number, insertTicks: number) => void;
+  sliceAndInsertSpace: (atTick: number, insertTicks: number) => void;
+  deleteSpace: (startTick: number, endTick: number) => void;
+  mergePatternClips: () => void;
+  mergeSimilarPatternClips: () => void;
+  mergeAutomationClips: () => void;
+  pitchSelectedAudioClips: (semitones: number) => void;
+  reverseSelectedAudioClips: () => void;
+  autoFadesEnabled: boolean;
+  setAutoFades: (v: boolean) => void;
+  manualFadesEnabled: boolean;
+  setManualFades: (v: boolean) => void;
+  snapFadeHandles: boolean;
+  setSnapFadeHandles: (v: boolean) => void;
+  quantizeSelectedClipStartTimes: () => void;
+  consolidateSelection: (mode: 'from_selection' | 'from_song_start') => void;
+  exportAllPlaylistTracks: (mode: 'from_song_start' | 'from_track_start' | 'time_selection') => Promise<void>;
+  cloneSelectedPlaylistTrack: () => void;
+  clipClipboard: ClipboardClip[];
+  copySelectedClips: () => void;
+  cutSelectedClips: () => void;
+  pasteClips: (atTick?: number) => void;
+
+  // ── Playlist markers / grouping / navigation ────────────────────
+  playlistMarkers: PlaylistMarker[];
+  addPlaylistMarker: (tick: number, type?: MarkerType, name?: string) => string;
+  removePlaylistMarker: (id: string) => void;
+  updatePlaylistMarker: (id: string, partial: Partial<PlaylistMarker>) => void;
+  addMarkerAtSelectionBoundary: (boundary: 'start' | 'end') => void;
+  addMarkersEvery: (bars: number) => void;
+  addJumpToNextBarMarker: () => void;
+  changeMarkerType: (id: string, type: MarkerType) => void;
+  placeLoop: (startTick: number, endTick: number) => void;
+  startRecordingAtSelection: () => void;
+  stopRecordingAtSelection: () => void;
+  moveContentAroundMarker: (markerId: string, dir: 'left' | 'right') => void;
+  trackGroups: TrackGroup[];
+  groupSelectedTracks: (name?: string) => string;
+  ungroupTracks: (groupId: string) => void;
+  toggleGroupCollapse: (groupId: string) => void;
+  setPlaylistZoomPreset: (preset: '1' | '2' | '3' | 'far' | 'selection' | 'performance') => void;
+  zoomInPlaylist: () => void;
+  zoomOutPlaylist: () => void;
+  centerPlaylistView: () => void;
+  pickerPanel: PickerPanelState;
+  setPickerPanel: (partial: Partial<PickerPanelState>) => void;
+  performanceMode: PerformanceModeState;
+  setPerformanceModeEnabled: (v: boolean) => void;
+  setPerformanceQuantize: (q: PerformanceQuantize) => void;
+  triggerPerformanceClip: (clipId: string) => void;
+  stopPerformanceClip: (clipId: string) => void;
+  centerPerformanceView: () => void;
+  audioDropBehavior: AudioDropBehavior;
+  setAudioDropBehavior: (b: AudioDropBehavior) => void;
 
   // ── Automation (Ableton / Studio One 스타일) ──────────────────────
   automationLanes: AutomationLane[];
@@ -2132,6 +2278,471 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       };
       return { audioRegions: s.audioRegions.map((r) => r.id === id ? left : r).concat(right) };
     }),
+
+  // ── MIDI Clips ─────────────────────────────────────────────────
+  midiClips: EMPTY_MIDI_CLIPS,
+
+  addMidiClipFromTrack: (trackId, startTick = 0) =>
+    set((s) => {
+      const track = s.project.tracks.find((t) => t.id === trackId);
+      if (!track) return s;
+      const notes = track.notes;
+      const durationTicks = notes.length > 0
+        ? Math.max(...notes.map((n) => n.startTick + n.durationTicks))
+        : (s.project.settings.ppq ?? 480) * 4;
+      const clip: MidiClip = {
+        id: nanoid(),
+        trackId,
+        startTick,
+        durationTicks,
+        name: track.name,
+        color: track.color,
+        notes: notes.map((n) => ({ ...n })),
+        muted: false,
+        velocityScale: 1,
+        transpose: 0,
+      };
+      return { midiClips: [...s.midiClips, clip] };
+    }),
+
+  removeMidiClip: (id) =>
+    set((s) => ({ midiClips: s.midiClips.filter((c) => c.id !== id) })),
+
+  updateMidiClip: (id, patch) =>
+    set((s) => ({
+      midiClips: s.midiClips.map((c) => c.id === id ? { ...c, ...patch } : c),
+    })),
+
+  // ── Playlist view / arrangement state ─────────────────────────
+  playlistView: DEFAULT_PLAYLIST_VIEW,
+  selectedClipIds: new Set<string>(),
+  clipClipboard: [],
+  playlistMarkers: [],
+  trackGroups: [],
+  arrangementScrollX: 0,
+  arrangementScrollY: 0,
+  arrangementZoomX: 1.0,
+  autoFadesEnabled: false,
+  manualFadesEnabled: false,
+  snapFadeHandles: true,
+  performanceMode: DEFAULT_PERFORMANCE_MODE,
+  pickerPanel: DEFAULT_PICKER_PANEL,
+  audioDropBehavior: 'always_ask',
+
+  setPlaylistView: (partial) =>
+    set((s) => ({ playlistView: { ...s.playlistView, ...partial } })),
+
+  setArrangementScroll: (x, y) =>
+    set({ arrangementScrollX: Math.max(0, x), arrangementScrollY: Math.max(0, y) }),
+
+  setArrangementZoomX: (z) =>
+    set({ arrangementZoomX: Math.max(0.1, Math.min(32, z)) }),
+
+  arrangementPixelsPerTick: () => {
+    const { project, arrangementZoomX } = get();
+    return (96 / project.settings.ppq) * arrangementZoomX;
+  },
+
+  selectClip: (id, additive) =>
+    set((s) => {
+      const next = additive ? new Set(s.selectedClipIds) : new Set<string>();
+      if (additive && next.has(id)) next.delete(id);
+      else next.add(id);
+      return { selectedClipIds: next };
+    }),
+
+  deselectAllClips: () => set({ selectedClipIds: new Set<string>() }),
+
+  selectAllClips: () =>
+    set((s) => ({
+      selectedClipIds: new Set([
+        ...s.audioRegions.map((r) => r.id),
+        ...s.midiClips.map((c) => c.id),
+      ]),
+    })),
+
+  selectClipsInRect: (startTick, endTick, trackIds) =>
+    set((s) => {
+      const minT = Math.min(startTick, endTick);
+      const maxT = Math.max(startTick, endTick);
+      const ids = new Set<string>();
+      for (const clip of [...s.audioRegions, ...s.midiClips]) {
+        if (!trackIds.includes(clip.trackId)) continue;
+        const clipEnd = clip.startTick + clip.durationTicks;
+        if (clipEnd >= minT && clip.startTick <= maxT) ids.add(clip.id);
+      }
+      return { selectedClipIds: ids };
+    }),
+
+  selectMutedClips: () =>
+    set((s) => ({
+      selectedClipIds: new Set([
+        ...s.audioRegions.filter((r) => r.muted).map((r) => r.id),
+        ...s.midiClips.filter((c) => c.muted).map((c) => c.id),
+      ]),
+    })),
+
+  selectOverlappingClips: () =>
+    set((s) => {
+      const clips = [...s.audioRegions, ...s.midiClips];
+      const ids = new Set<string>();
+      for (let i = 0; i < clips.length; i++) {
+        for (let j = i + 1; j < clips.length; j++) {
+          if (clips[i].trackId !== clips[j].trackId) continue;
+          const aEnd = clips[i].startTick + clips[i].durationTicks;
+          const bEnd = clips[j].startTick + clips[j].durationTicks;
+          if (aEnd > clips[j].startTick && bEnd > clips[i].startTick) {
+            ids.add(clips[i].id);
+            ids.add(clips[j].id);
+          }
+        }
+      }
+      return { selectedClipIds: ids };
+    }),
+
+  selectStackedClips: () =>
+    set((s) => {
+      const byStart = new Map<number, string[]>();
+      for (const clip of [...s.audioRegions, ...s.midiClips]) {
+        byStart.set(clip.startTick, [...(byStart.get(clip.startTick) ?? []), clip.id]);
+      }
+      return { selectedClipIds: new Set([...byStart.values()].filter((ids) => ids.length > 1).flat()) };
+    }),
+
+  invertClipSelection: () =>
+    set((s) => {
+      const all = [...s.audioRegions, ...s.midiClips].map((c) => c.id);
+      return { selectedClipIds: new Set(all.filter((id) => !s.selectedClipIds.has(id))) };
+    }),
+
+  selectTimeAroundSelection: () => {
+    const { selectedClipIds, audioRegions, midiClips } = get();
+    const clips = [...audioRegions, ...midiClips].filter((c) => selectedClipIds.has(c.id));
+    if (!clips.length) return;
+    const start = Math.min(...clips.map((c) => c.startTick));
+    const end = Math.max(...clips.map((c) => c.startTick + c.durationTicks));
+    get().selectTimeRange(start, end);
+  },
+
+  selectTimeRange: (startTick, endTick) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        settings: {
+          ...s.project.settings,
+          loopStartTick: Math.max(0, Math.min(startTick, endTick)),
+          loopEndTick: Math.max(startTick, endTick),
+        },
+      },
+    })),
+
+  selectAdjacentTime: (dir) => {
+    const { playheadTick, audioRegions, midiClips } = get();
+    const edges = [...audioRegions, ...midiClips]
+      .flatMap((c) => [c.startTick, c.startTick + c.durationTicks])
+      .filter((t) => dir === 'next' ? t > playheadTick : t < playheadTick)
+      .sort((a, b) => dir === 'next' ? a - b : b - a);
+    if (edges[0] != null) set({ playheadTick: edges[0] });
+  },
+
+  selectBySource: (sourceClipId) =>
+    set((s) => {
+      const source = [...s.audioRegions, ...s.midiClips].find((c) => c.id === sourceClipId);
+      if (!source) return {};
+      return {
+        selectedClipIds: new Set([
+          ...s.audioRegions.filter((r) => r.name === source.name).map((r) => r.id),
+          ...s.midiClips.filter((c) => c.name === source.name).map((c) => c.id),
+        ]),
+      };
+    }),
+
+  moveSelectedClips: (deltaTick, deltaTrackIndex) =>
+    set((s) => {
+      const tracks = s.project.tracks;
+      const moveTrack = (trackId: string) => {
+        const idx = tracks.findIndex((t) => t.id === trackId);
+        return tracks[Math.max(0, Math.min(tracks.length - 1, idx + deltaTrackIndex))]?.id ?? trackId;
+      };
+      const move = <T extends AudioRegion | MidiClip>(clip: T): T =>
+        s.selectedClipIds.has(clip.id)
+          ? { ...clip, startTick: Math.max(0, clip.startTick + deltaTick), trackId: moveTrack(clip.trackId) }
+          : clip;
+      return { audioRegions: s.audioRegions.map(move), midiClips: s.midiClips.map(move) };
+    }),
+
+  shiftSelectedClips: (dir, amount) => {
+    const ticks = amount ?? get().snapTicks();
+    if (dir === 'left') get().moveSelectedClips(-ticks, 0);
+    else if (dir === 'right') get().moveSelectedClips(ticks, 0);
+    else get().moveSelectedClips(0, dir === 'up' ? -1 : 1);
+  },
+
+  nudgeSelectedClipsWithWheel: (deltaTick) => get().moveSelectedClips(deltaTick, 0),
+
+  duplicateSelectedClips: () =>
+    set((s) => {
+      const offset = ticksPerBar(s.project.settings.ppq, s.project.settings.timeSignature);
+      const audioCopies = s.audioRegions
+        .filter((r) => s.selectedClipIds.has(r.id))
+        .map((r) => ({ ...r, id: nanoid(), startTick: r.startTick + offset }));
+      const midiCopies = s.midiClips
+        .filter((c) => s.selectedClipIds.has(c.id))
+        .map((c) => ({ ...c, id: nanoid(), startTick: c.startTick + offset, notes: c.notes.map((n) => ({ ...n })) }));
+      return {
+        audioRegions: [...s.audioRegions, ...audioCopies],
+        midiClips: [...s.midiClips, ...midiCopies],
+        selectedClipIds: new Set([...audioCopies, ...midiCopies].map((c) => c.id)),
+      };
+    }),
+
+  deleteSelectedClips: () =>
+    set((s) => ({
+      audioRegions: s.audioRegions.filter((r) => !s.selectedClipIds.has(r.id)),
+      midiClips: s.midiClips.filter((c) => !s.selectedClipIds.has(c.id)),
+      selectedClipIds: new Set<string>(),
+    })),
+
+  toggleSelectedClipsMute: () =>
+    set((s) => ({
+      audioRegions: s.audioRegions.map((r) => s.selectedClipIds.has(r.id) ? { ...r, muted: !r.muted } : r),
+      midiClips: s.midiClips.map((c) => s.selectedClipIds.has(c.id) ? { ...c, muted: !c.muted } : c),
+    })),
+
+  insertSpace: (atTick, insertTicks) =>
+    set((s) => ({
+      audioRegions: s.audioRegions.map((r) => r.startTick >= atTick ? { ...r, startTick: r.startTick + insertTicks } : r),
+      midiClips: s.midiClips.map((c) => c.startTick >= atTick ? { ...c, startTick: c.startTick + insertTicks } : c),
+    })),
+
+  sliceAndInsertSpace: (atTick, insertTicks) => {
+    for (const region of get().audioRegions) {
+      if (region.startTick < atTick && region.startTick + region.durationTicks > atTick) {
+        get().splitAudioRegion(region.id, atTick);
+      }
+    }
+    get().insertSpace(atTick, insertTicks);
+  },
+
+  deleteSpace: (startTick, endTick) =>
+    set((s) => {
+      const amount = Math.max(0, endTick - startTick);
+      const trim = <T extends AudioRegion | MidiClip>(clip: T): T | null => {
+        const clipEnd = clip.startTick + clip.durationTicks;
+        if (clip.startTick >= startTick && clipEnd <= endTick) return null;
+        if (clip.startTick >= endTick) return { ...clip, startTick: clip.startTick - amount };
+        return clip;
+      };
+      return {
+        audioRegions: s.audioRegions.map(trim).filter(Boolean) as AudioRegion[],
+        midiClips: s.midiClips.map(trim).filter(Boolean) as MidiClip[],
+      };
+    }),
+
+  mergePatternClips: () => get().duplicateSelectedClips(),
+  mergeSimilarPatternClips: () => get().duplicateSelectedClips(),
+  mergeAutomationClips: () => undefined,
+
+  pitchSelectedAudioClips: (semitones) =>
+    set((s) => ({
+      audioRegions: s.audioRegions.map((r) =>
+        s.selectedClipIds.has(r.id) ? { ...r, pitchSemitones: r.pitchSemitones + semitones } : r),
+    })),
+
+  reverseSelectedAudioClips: () =>
+    set((s) => ({
+      audioRegions: s.audioRegions.map((r) =>
+        s.selectedClipIds.has(r.id) ? { ...r, name: `${r.name} (rev)` } : r),
+    })),
+
+  setAutoFades: (v) => set({ autoFadesEnabled: v }),
+  setManualFades: (v) => set({ manualFadesEnabled: v }),
+  setSnapFadeHandles: (v) => set({ snapFadeHandles: v }),
+
+  quantizeSelectedClipStartTimes: () => {
+    const snap = get().snapTicks();
+    set((s) => ({
+      audioRegions: s.audioRegions.map((r) => s.selectedClipIds.has(r.id) ? { ...r, startTick: snapTick(r.startTick, snap) } : r),
+      midiClips: s.midiClips.map((c) => s.selectedClipIds.has(c.id) ? { ...c, startTick: snapTick(c.startTick, snap) } : c),
+    }));
+  },
+
+  consolidateSelection: () => undefined,
+  exportAllPlaylistTracks: async () => undefined,
+
+  cloneSelectedPlaylistTrack: () =>
+    set((s) => {
+      const ids = [...s.selectedClipIds];
+      const selected = [...s.audioRegions, ...s.midiClips].find((c) => ids.includes(c.id));
+      const track = selected ? s.project.tracks.find((t) => t.id === selected.trackId) : get().activeTrack();
+      if (!track) return {};
+      const clone = { ...track, id: nanoid(), name: `${track.name} copy`, notes: track.notes.map((n) => ({ ...n, id: nanoid() })) };
+      return { project: { ...s.project, tracks: [...s.project.tracks, clone], activeTrackId: clone.id } };
+    }),
+
+  copySelectedClips: () =>
+    set((s) => {
+      const clips = [
+        ...s.audioRegions.filter((r) => s.selectedClipIds.has(r.id)).map((r) => ({ kind: 'audio' as const, clip: r })),
+        ...s.midiClips.filter((c) => s.selectedClipIds.has(c.id)).map((c) => ({ kind: 'midi' as const, clip: c })),
+      ];
+      const origin = clips.length ? Math.min(...clips.map(({ clip }) => clip.startTick)) : 0;
+      return {
+        clipClipboard: clips.map(({ kind, clip }) => ({
+          kind,
+          trackId: clip.trackId,
+          startOffset: clip.startTick - origin,
+          durationTicks: clip.durationTicks,
+          payload: { ...clip },
+        })),
+      };
+    }),
+
+  cutSelectedClips: () => {
+    get().copySelectedClips();
+    get().deleteSelectedClips();
+  },
+
+  pasteClips: (atTick = get().playheadTick) =>
+    set((s) => {
+      const audio: AudioRegion[] = [];
+      const midi: MidiClip[] = [];
+      for (const item of s.clipClipboard) {
+        if (item.kind === 'audio') audio.push({ ...(item.payload as unknown as AudioRegion), id: nanoid(), startTick: atTick + item.startOffset });
+        else midi.push({ ...(item.payload as unknown as MidiClip), id: nanoid(), startTick: atTick + item.startOffset });
+      }
+      return {
+        audioRegions: [...s.audioRegions, ...audio],
+        midiClips: [...s.midiClips, ...midi],
+        selectedClipIds: new Set([...audio, ...midi].map((c) => c.id)),
+      };
+    }),
+
+  addPlaylistMarker: (tick, type = 'none', name) => {
+    const id = nanoid();
+    const marker: PlaylistMarker = { id, tick, type, name: name ?? `Marker ${get().playlistMarkers.length + 1}` };
+    set((s) => ({
+      playlistMarkers: [...s.playlistMarkers, marker].sort((a, b) => a.tick - b.tick),
+      project: { ...s.project, playlistMarkers: [...(s.project.playlistMarkers ?? []), marker].sort((a, b) => a.tick - b.tick) },
+    }));
+    return id;
+  },
+
+  removePlaylistMarker: (id) =>
+    set((s) => ({
+      playlistMarkers: s.playlistMarkers.filter((m) => m.id !== id),
+      project: { ...s.project, playlistMarkers: (s.project.playlistMarkers ?? []).filter((m) => m.id !== id) },
+    })),
+
+  updatePlaylistMarker: (id, partial) =>
+    set((s) => ({
+      playlistMarkers: s.playlistMarkers.map((m) => m.id === id ? { ...m, ...partial } : m).sort((a, b) => a.tick - b.tick),
+      project: {
+        ...s.project,
+        playlistMarkers: (s.project.playlistMarkers ?? s.playlistMarkers).map((m) => m.id === id ? { ...m, ...partial } : m).sort((a, b) => a.tick - b.tick),
+      },
+    })),
+
+  addMarkerAtSelectionBoundary: (boundary) => {
+    const { project } = get();
+    const tick = boundary === 'start' ? project.settings.loopStartTick : project.settings.loopEndTick;
+    get().addPlaylistMarker(tick, 'none', boundary === 'start' ? 'Selection start' : 'Selection end');
+  },
+
+  addMarkersEvery: (bars) => {
+    const { project } = get();
+    const barTicks = ticksPerBar(project.settings.ppq, project.settings.timeSignature);
+    for (let t = 0; t <= get().totalTicks(); t += barTicks * bars) get().addPlaylistMarker(t, 'none', `Bar ${Math.floor(t / barTicks) + 1}`);
+  },
+
+  addJumpToNextBarMarker: () => {
+    const { project, playheadTick } = get();
+    const barTicks = ticksPerBar(project.settings.ppq, project.settings.timeSignature);
+    get().addPlaylistMarker(Math.ceil(playheadTick / barTicks) * barTicks, 'marker_loop', 'Jump next bar');
+  },
+
+  changeMarkerType: (id, type) => get().updatePlaylistMarker(id, { type }),
+  placeLoop: (startTick, endTick) => get().selectTimeRange(startTick, endTick),
+  startRecordingAtSelection: () => get().addPlaylistMarker(get().project.settings.loopStartTick, 'start_recording', 'Start recording'),
+  stopRecordingAtSelection: () => get().addPlaylistMarker(get().project.settings.loopEndTick, 'stop_recording', 'Stop recording'),
+  moveContentAroundMarker: (markerId, dir) => {
+    const marker = get().playlistMarkers.find((m) => m.id === markerId);
+    if (!marker) return;
+    get().insertSpace(marker.tick, (dir === 'right' ? 1 : -1) * get().snapTicks());
+  },
+
+  groupSelectedTracks: (name) => {
+    const id = nanoid();
+    const selectedTrackIds = [...new Set(
+      [...get().audioRegions, ...get().midiClips]
+        .filter((c) => get().selectedClipIds.has(c.id))
+        .map((c) => c.trackId),
+    )];
+    const group: TrackGroup = { id, name: name ?? `Group ${get().trackGroups.length + 1}`, trackIds: selectedTrackIds, collapsed: false };
+    set((s) => ({
+      trackGroups: [...s.trackGroups, group],
+      project: { ...s.project, trackGroups: [...(s.project.trackGroups ?? []), group] },
+    }));
+    return id;
+  },
+
+  ungroupTracks: (groupId) =>
+    set((s) => ({
+      trackGroups: s.trackGroups.filter((g) => g.id !== groupId),
+      project: { ...s.project, trackGroups: (s.project.trackGroups ?? []).filter((g) => g.id !== groupId) },
+    })),
+
+  toggleGroupCollapse: (groupId) =>
+    set((s) => ({
+      trackGroups: s.trackGroups.map((g) => g.id === groupId ? { ...g, collapsed: !g.collapsed } : g),
+      project: { ...s.project, trackGroups: (s.project.trackGroups ?? s.trackGroups).map((g) => g.id === groupId ? { ...g, collapsed: !g.collapsed } : g) },
+    })),
+
+  setPlaylistZoomPreset: (preset) => {
+    if (preset === '1') set({ arrangementZoomX: 1 });
+    else if (preset === '2') set({ arrangementZoomX: 0.5 });
+    else if (preset === '3') set({ arrangementZoomX: 0.25 });
+    else if (preset === 'far') set({ arrangementZoomX: 0.1 });
+    else if (preset === 'selection') {
+      const { selectedClipIds, audioRegions, midiClips } = get();
+      const clips = [...audioRegions, ...midiClips].filter((c) => selectedClipIds.has(c.id));
+      if (!clips.length) return;
+      const start = Math.min(...clips.map((c) => c.startTick));
+      const end = Math.max(...clips.map((c) => c.startTick + c.durationTicks));
+      const span = Math.max(1, end - start);
+      const zoom = Math.max(0.1, Math.min(32, 960 / span));
+      set({ arrangementZoomX: zoom, arrangementScrollX: start * (96 / get().project.settings.ppq) * zoom });
+    } else {
+      get().centerPerformanceView();
+    }
+  },
+
+  zoomInPlaylist: () => set((s) => ({ arrangementZoomX: Math.min(32, s.arrangementZoomX * 1.25) })),
+  zoomOutPlaylist: () => set((s) => ({ arrangementZoomX: Math.max(0.1, s.arrangementZoomX / 1.25) })),
+  centerPlaylistView: () => set((s) => ({ arrangementScrollX: Math.max(0, s.playheadTick * get().arrangementPixelsPerTick() - 400) })),
+
+  setPickerPanel: (partial) =>
+    set((s) => ({ pickerPanel: { ...s.pickerPanel, ...partial } })),
+
+  setPerformanceModeEnabled: (v) =>
+    set((s) => ({ performanceMode: { ...s.performanceMode, enabled: v } })),
+
+  setPerformanceQuantize: (q) =>
+    set((s) => ({ performanceMode: { ...s.performanceMode, quantize: q } })),
+
+  triggerPerformanceClip: (clipId) =>
+    set((s) => ({ performanceMode: { ...s.performanceMode, activeClips: { ...s.performanceMode.activeClips, [clipId]: true } } })),
+
+  stopPerformanceClip: (clipId) =>
+    set((s) => ({ performanceMode: { ...s.performanceMode, activeClips: { ...s.performanceMode.activeClips, [clipId]: false } } })),
+
+  centerPerformanceView: () => {
+    const activeIds = Object.keys(get().performanceMode.activeClips).filter((id) => get().performanceMode.activeClips[id]);
+    const clip = [...get().audioRegions, ...get().midiClips].find((c) => activeIds.includes(c.id));
+    if (clip) set({ arrangementScrollX: Math.max(0, clip.startTick * get().arrangementPixelsPerTick() - 240) });
+  },
+
+  setAudioDropBehavior: (b) => set({ audioDropBehavior: b }),
 
   // ── Automation Lanes ───────────────────────────────────────────
   automationLanes: EMPTY_AUTOMATION_LANES,

@@ -343,6 +343,10 @@ export interface Project {
   /** Pattern containers (#53). When omitted, project runs as single arrangement. */
   patterns?: Pattern[];
   activePatternId?: string;
+  /** Playlist-only markers with FL Studio-style marker types. */
+  playlistMarkers?: import('./playlist').PlaylistMarker[];
+  /** Playlist track groups. */
+  trackGroups?: import('./playlist').TrackGroup[];
   /** Optional reference waveform overlay (#52). */
   backgroundWaveform?: {
     /** Base64-encoded Float32Array packed into a JSON-safe payload. */
@@ -448,6 +452,13 @@ export interface AudioRegion {
   color: string;
   pitchSemitones: number;
   timewarpFactor: number;
+  /** Crossfade counterpart clip id. */
+  crossfadeWithId?: string;
+  crossfadeTicks?: number;
+  /** Trim offset inside the source audio in project ticks. */
+  clipStartOffsetTicks?: number;
+  selected?: boolean;
+  groupId?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -491,4 +502,22 @@ export interface ModulationMapping {
   targetLaneId: string;
   depth: number;
   enabled: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MIDI Clip  (Arrangement View — Audio Edit 패널에 배치되는 MIDI 블록)
+// ═══════════════════════════════════════════════════════════════════
+export interface MidiClip {
+  id: string;
+  trackId: string;
+  startTick: number;
+  durationTicks: number;
+  name: string;
+  color: string;
+  notes: Note[];
+  muted: boolean;
+  velocityScale: number;
+  transpose: number;
+  selected?: boolean;
+  groupId?: string;
 }
