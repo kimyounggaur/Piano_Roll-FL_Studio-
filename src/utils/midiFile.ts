@@ -1,6 +1,7 @@
 import { Midi } from '@tonejs/midi';
 import type { Project, Track, Note, TrackId, NoteId } from '../types/music';
 import { DEFAULT_PPQ } from '../types/music';
+import { parseNoteColorGroup } from './exportFilters';
 
 // ═══════════════════════════════════════════════════════════════════
 //  Types returned by importMidi — pre-id, pre-style. The store turns
@@ -118,13 +119,6 @@ export interface ExportOptions {
   fileName?: string;
 }
 
-/** Returns the group index a note belongs to. Missing/empty/'0' → 0. */
-function parseColorGroup(raw: string | undefined | null): number {
-  if (raw == null || raw === '') return 0;
-  const n = parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : 0;
-}
-
 /** Returns an export-ready { blob, fileName } pair. */
 export function exportMidi(project: Project, opts: ExportOptions = {}): { blob: Blob; fileName: string } {
   const excludeMutedNotes  = opts.excludeMutedNotes  ?? true;
@@ -155,7 +149,7 @@ export function exportMidi(project: Project, opts: ExportOptions = {}): { blob: 
     for (const n of track.notes) {
       if (excludeMutedNotes && n.muted) continue;
       if (colorFilterActive) {
-        const g = parseColorGroup(n.colorGroup);
+        const g = parseNoteColorGroup(n.colorGroup);
         if (!opts.colorGroups!.includes(g)) continue;
       }
       mt.addNote({

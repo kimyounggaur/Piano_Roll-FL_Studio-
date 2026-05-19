@@ -4,6 +4,7 @@ import { importMidi, exportMidi, downloadBlob } from '../../utils/midiFile';
 import { exportMusicXml, exportMxl } from '../../utils/musicXmlFile';
 import { deserializeProject, projectToBlob } from '../../utils/projectSerialization';
 import { NOTE_COLOR_GROUPS } from '../../types/music';
+import { countExportableNotes, getUsedColorGroups } from '../../utils/exportFilters';
 
 type ImportMode = 'replace' | 'append';
 
@@ -36,18 +37,21 @@ export const ImportExportPanel: React.FC = () => {
     colorGroups: colorFilter ? Array.from(colorFilter) : undefined,
   });
 
-  /** Color groups (0..15) that actually contain notes in the current project. */
-  const usedColorGroups = (() => {
-    const counts = new Map<number, number>();
-    for (const t of project.tracks) {
-      for (const n of t.notes) {
-        const raw = n.colorGroup;
-        const g = (raw == null || raw === '') ? 0 : (parseInt(String(raw), 10) || 0);
-        counts.set(g, (counts.get(g) ?? 0) + 1);
-      }
+  const baseExportOpts = { excludeMutedNotes, excludeMutedTracks };
+  const currentExportOpts = exportOpts();
+  const exportableCount = countExportableNotes(project, currentExportOpts);
+  const usedColorGroups = getUsedColorGroups(project, baseExportOpts);
+
+  const guardHasExportableNotes = (
+    opts = currentExportOpts,
+    emptyMessage = '현재 내보내기 조건에 맞는 노트가 없습니다.',
+  ): boolean => {
+    if (countExportableNotes(project, opts) === 0) {
+      setError(emptyMessage);
+      return false;
     }
-    return Array.from(counts.entries()).sort((a, b) => a[0] - b[0]);
-  })();
+    return true;
+  };
 
   /** One-click "export only this color" — bypasses the multi-select filter. */
   const exportSingleColor = (
@@ -55,13 +59,13 @@ export const ImportExportPanel: React.FC = () => {
     kind: 'mid' | 'musicxml' | 'mxl',
   ) => {
     setError(null);
-    if (!guardHasNotes()) return;
     const opts = {
       excludeMutedNotes,
       excludeMutedTracks,
       colorGroups: [group],
       fileName: `${defaultBase()}-color${group}`,
     };
+    if (!guardHasExportableNotes(opts, `색상 ${group}에 내보낼 수 있는 노트가 없습니다.`)) return;
     try {
       const { blob, fileName } =
         kind === 'mid'      ? exportMidi(project, opts)      :
@@ -108,18 +112,9 @@ export const ImportExportPanel: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────
   //  Export
   // ─────────────────────────────────────────────────────────────────
-  const guardHasNotes = (): boolean => {
-    const totalNotes = project.tracks.reduce((acc, t) => acc + t.notes.length, 0);
-    if (totalNotes === 0) {
-      setError('프로젝트에 노트가 없어 내보낼 수 없습니다.');
-      return false;
-    }
-    return true;
-  };
-
   const onExportMidi = () => {
     setError(null);
-    if (!guardHasNotes()) return;
+    if (!guardHasExportableNotes()) return;
     try {
       const { blob, fileName } = exportMidi(project, exportOpts());
       downloadBlob(blob, fileName);
@@ -131,7 +126,7 @@ export const ImportExportPanel: React.FC = () => {
 
   const onExportMusicXml = () => {
     setError(null);
-    if (!guardHasNotes()) return;
+    if (!guardHasExportableNotes()) return;
     try {
       const { blob, fileName } = exportMusicXml(project, exportOpts());
       downloadBlob(blob, fileName);
@@ -143,7 +138,7 @@ export const ImportExportPanel: React.FC = () => {
 
   const onExportMxl = () => {
     setError(null);
-    if (!guardHasNotes()) return;
+    if (!guardHasExportableNotes()) return;
     try {
       const { blob, fileName } = exportMxl(project, exportOpts());
       downloadBlob(blob, fileName);
@@ -207,27 +202,27 @@ export const ImportExportPanel: React.FC = () => {
 
         {/* ── Color-group filter ─────────────────────────────────── */}
         <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 12, marginBottom: 4, color: '#cdffad' }}>
+          <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--text-primary)' }}>
             색상 그룹 필터
             <button
               type="button"
               onClick={() => setColorFilter(null)}
               style={{
                 marginLeft: 8, padding: '0 6px', fontSize: 10,
-                background: 'transparent', color: '#9fe870',
-                border: '1px solid #2b2c28', borderRadius: 3, cursor: 'pointer',
+                background: 'transparent', color: 'var(--accent)',
+                border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer',
               }}
               title="필터 해제 — 모든 색 내보내기"
             >
               모두
             </button>
           </div>
-          <div style={{ fontSize: 10, color: '#868685', marginBottom: 6 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>
             {colorFilter === null
-              ? '전체 노트 내보내기'
+              ? `내보낼 노트 ${exportableCount}개`
               : colorFilter.size === 0
                 ? '(선택 없음 — 결과가 비어 있을 수 있음)'
-                : `선택된 ${colorFilter.size}개 그룹의 노트만 내보내기`}
+                : `선택 색상 노트 ${exportableCount}개`}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
             {NOTE_COLOR_GROUPS.map((c, idx) => {
@@ -241,8 +236,8 @@ export const ImportExportPanel: React.FC = () => {
                   style={{
                     width: '100%', height: 20, borderRadius: 4, cursor: 'pointer',
                     background: idx === 0 ? 'transparent' : c,
-                    border: active ? '2px solid #9fe870' : '1px solid #2b2c28',
-                    outline: idx === 0 && active ? '1px dashed #9fe870' : 'none',
+                    border: active ? '2px solid var(--accent)' : '1px solid var(--border)',
+                    outline: idx === 0 && active ? '1px dashed var(--accent)' : 'none',
                     padding: 0,
                   }}
                 />
@@ -252,13 +247,13 @@ export const ImportExportPanel: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-          <button onClick={onExportMidi} style={buttonStyle}>
+          <button onClick={onExportMidi} style={buttonStyle} disabled={exportableCount === 0}>
             .mid로 저장
           </button>
-          <button onClick={onExportMusicXml} style={buttonStyle}>
+          <button onClick={onExportMusicXml} style={buttonStyle} disabled={exportableCount === 0}>
             .musicxml로 저장
           </button>
-          <button onClick={onExportMxl} style={buttonStyle}>
+          <button onClick={onExportMxl} style={buttonStyle} disabled={exportableCount === 0}>
             .mxl로 저장
           </button>
         </div>
@@ -270,11 +265,11 @@ export const ImportExportPanel: React.FC = () => {
             "동일 색상 노트만 내보내기" — one click → one file. */}
         {usedColorGroups.length > 0 && (
           <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12, marginBottom: 6, color: '#cdffad' }}>
+            <div style={{ fontSize: 12, marginBottom: 6, color: 'var(--text-primary)' }}>
               색상별 빠른 내보내기
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {usedColorGroups.map(([group, count]) => (
+              {usedColorGroups.map(({ group, count }) => (
                 <div
                   key={group}
                   style={{
@@ -288,12 +283,12 @@ export const ImportExportPanel: React.FC = () => {
                     style={{
                       width: 16, height: 16, borderRadius: 4,
                       background: group === 0 ? 'transparent' : NOTE_COLOR_GROUPS[group],
-                      border: '1px solid #2b2c28',
+                      border: '1px solid var(--border)',
                       display: 'inline-block',
                     }}
                     title={group === 0 ? '그룹 없음 (트랙 색)' : `그룹 ${group}`}
                   />
-                  <span style={{ fontSize: 11, color: '#a99aad' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                     {group === 0 ? '그룹 없음' : `그룹 ${group}`} · 노트 {count}개
                   </span>
                   <button
@@ -369,20 +364,20 @@ export const ImportExportPanel: React.FC = () => {
 
 // ── inline styles to keep this self-contained ────────────────────────
 const panelStyle: React.CSSProperties = {
-  background: '#0e0f0c', color: '#e8ebe6', padding: 12, borderRadius: 6,
-  border: '1px solid #2b2c28', fontSize: 13,
+  background: 'var(--bg-secondary)', color: 'var(--text-primary)', padding: 12, borderRadius: 6,
+  border: '1px solid var(--border)', fontSize: 13,
 };
-const headingStyle: React.CSSProperties = { margin: '0 0 8px', fontSize: 14, color: '#9fe870' };
-const subHeadingStyle: React.CSSProperties = { margin: '8px 0 6px', fontSize: 12, color: '#cdffad' };
+const headingStyle: React.CSSProperties = { margin: '0 0 8px', fontSize: 14, color: 'var(--lavender)' };
+const subHeadingStyle: React.CSSProperties = { margin: '8px 0 6px', fontSize: 12, color: 'var(--text-primary)' };
 const sectionStyle: React.CSSProperties   = { marginBottom: 12 };
 const rowStyle: React.CSSProperties       = { display: 'flex', gap: 12, marginBottom: 6 };
 const buttonStyle: React.CSSProperties = {
-  marginTop: 6, padding: '6px 10px', background: '#9fe870', color: '#163300',
+  marginTop: 6, padding: '6px 10px', background: 'var(--accent)', color: 'var(--accent-dark)',
   border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600,
 };
 const smallButtonStyle: React.CSSProperties = {
-  padding: '2px 6px', fontSize: 10, background: '#1c1f18',
-  color: '#cdffad', border: '1px solid #2b2c28',
+  padding: '2px 6px', fontSize: 10, background: 'var(--bg-surface)',
+  color: 'var(--text-secondary)', border: '1px solid var(--border)',
   borderRadius: 3, cursor: 'pointer', fontWeight: 600,
 };
 
@@ -393,6 +388,6 @@ function defaultBase(): string {
 }
 
 const errorStyle: React.CSSProperties = {
-  marginTop: 8, padding: 8, background: 'rgba(208,50,56,0.15)',
-  border: '1px solid #d03238', borderRadius: 4, color: '#ffb2b5', fontSize: 12,
+  marginTop: 8, padding: 8, background: 'color-mix(in srgb, var(--danger) 16%, transparent)',
+  border: '1px solid var(--danger)', borderRadius: 4, color: 'var(--danger)', fontSize: 12,
 };

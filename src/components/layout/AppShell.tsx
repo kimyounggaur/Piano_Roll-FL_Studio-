@@ -6,13 +6,14 @@ import { PianoRoll } from '../pianoRoll/PianoRoll';
 import { DrumSequencer } from '../pianoRoll/DrumSequencer';
 import { PatternPanel } from '../panels/PatternPanel';
 import { GhostChannelPanel } from '../panels/GhostChannelPanel';
+import { ImportExportPanel } from '../panels/ImportExportPanel';
 import { RestorePrompt } from './RestorePrompt';
 import { useAutosave } from '../../hooks/useAutosave';
 import { usePerformanceModeReschedule } from '../../hooks/usePerformanceModeReschedule';
 import { useProjectStore } from '../../store/projectStore';
 import './AppShell.css';
 
-type RightTab = 'inspector' | 'patterns' | 'ghosts';
+type RightTab = 'inspector' | 'patterns' | 'ghosts' | 'files';
 
 export const AppShell: React.FC = () => {
   useAutosave(1000);
@@ -36,7 +37,7 @@ export const AppShell: React.FC = () => {
         }
         <div style={{ width: 'var(--inspector-w, 240px)', display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
-            {(['inspector', 'patterns', 'ghosts'] as const).map((t) => (
+            {(['inspector', 'patterns', 'ghosts', 'files'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -47,7 +48,7 @@ export const AppShell: React.FC = () => {
                   border: 'none', cursor: 'pointer',
                 }}
               >
-                {t === 'inspector' ? '검사기' : t === 'patterns' ? '패턴' : '고스트'}
+                {t === 'inspector' ? '검사기' : t === 'patterns' ? '패턴' : t === 'ghosts' ? '고스트' : '파일'}
               </button>
             ))}
           </div>
@@ -55,6 +56,7 @@ export const AppShell: React.FC = () => {
             {tab === 'inspector' && <InspectorPanel />}
             {tab === 'patterns'  && <PatternPanel />}
             {tab === 'ghosts'    && <GhostChannelPanel />}
+            {tab === 'files'     && <ImportExportPanel />}
           </div>
         </div>
       </div>

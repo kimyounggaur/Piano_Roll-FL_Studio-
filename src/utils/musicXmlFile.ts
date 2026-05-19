@@ -10,6 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import type { Project, Note, Track } from '../types/music';
+import { parseNoteColorGroup } from './exportFilters';
 
 const NOTE_LETTERS = ['C', 'C', 'D', 'D', 'E', 'F', 'F', 'G', 'G', 'A', 'A', 'B'] as const;
 const NOTE_ALTERS  = [0,   1,   0,   1,   0,   0,   1,   0,   1,   0,   1,   0  ] as const;
@@ -41,17 +42,10 @@ export interface MusicXmlExportOptions {
 function passesFilter(n: Note, opts: MusicXmlExportOptions): boolean {
   if (opts.excludeMutedNotes !== false && n.muted) return false;
   if (opts.colorGroups && opts.colorGroups.length > 0) {
-    const g = parseColorGroup(n.colorGroup);
+    const g = parseNoteColorGroup(n.colorGroup);
     if (!opts.colorGroups.includes(g)) return false;
   }
   return true;
-}
-
-/** Returns the group index a note belongs to. Missing/empty/'0' → 0. */
-function parseColorGroup(raw: string | undefined | null): number {
-  if (raw == null || raw === '') return 0;
-  const n = parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
