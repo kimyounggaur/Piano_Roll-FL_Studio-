@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import type { Note, PianoRollTool, SnapValue } from '../types/music';
+import { dispatchOpenToolDialog, quickChopNotes, type ToolDialogKind } from '../components/pianoRoll/toolsMenuModel';
 
 // ═══════════════════════════════════════════════════════════════════
 //  Clipboard
@@ -39,6 +40,12 @@ export const SHORTCUT_CATALOG: ShortcutSpec[] = [
   { keys: 'M',               description: '선택 노트 음소거 토글',    group: 'edit' },
   { keys: 'Ctrl/⌘ + G',      description: 'Glue (인접 노트 병합)',    group: 'edit' },
   { keys: 'Ctrl/⌘ + L',      description: 'Quick Legato',             group: 'edit' },
+  { keys: 'Ctrl/⌘ + U',      description: 'Quick Chop',               group: 'edit' },
+  { keys: 'Alt + Q',         description: 'Quantize 도구 열기',       group: 'edit' },
+  { keys: 'Alt + S',         description: 'Strum 도구 열기',          group: 'edit' },
+  { keys: 'Alt + A',         description: 'Arpeggiate 도구 열기',     group: 'edit' },
+  { keys: 'Alt + R',         description: 'Randomize 도구 열기',      group: 'edit' },
+  { keys: 'Alt + O',         description: 'LFO 도구 열기',            group: 'edit' },
   { keys: 'Shift + I',       description: '선택 반전',                group: 'edit' },
   { keys: 'Z',               description: '선택 영역에 줌',           group: 'view' },
   { keys: 'Shift + 1..5',    description: '줌 프리셋',                group: 'view' },
@@ -78,6 +85,10 @@ function isMod(e: KeyboardEvent): boolean {
   return e.ctrlKey || e.metaKey;
 }
 
+function createShortcutNoteId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `note_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  Hook
 //  @param onShowHelp  optional callback to open the help modal (`?` key)
@@ -85,7 +96,10 @@ function isMod(e: KeyboardEvent): boolean {
 export function usePianoRollShortcuts(onShowHelp?: () => void): void {
   // Ref keeps the latest help callback without re-binding the listener.
   const helpRef = useRef(onShowHelp);
-  helpRef.current = onShowHelp;
+
+  useEffect(() => {
+    helpRef.current = onShowHelp;
+  }, [onShowHelp]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -217,14 +231,31 @@ export function usePianoRollShortcuts(onShowHelp?: () => void): void {
         return;
       }
 
+      // ── FL-style tool dialogs ────────────────────────────────
+      if (!mod && e.altKey) {
+        const dialogMap: Record<string, ToolDialogKind> = {
+          q: 'quantize',
+          s: 'strum',
+          a: 'arpeggiate',
+          r: 'randomize',
+          o: 'lfo',
+        };
+        const dialog = dialogMap[key.toLowerCase()];
+        if (dialog) {
+          e.preventDefault();
+          dispatchOpenToolDialog(dialog);
+          return;
+        }
+      }
+
       // ── transforms ───────────────────────────────────────────
-      if (!mod && (key === 'q' || key === 'Q')) {
+      if (!mod && !e.altKey && (key === 'q' || key === 'Q')) {
         e.preventDefault();
         const { quantizeStrength, quantizeDuration } = project.settings;
         quantizeSelectedNotes(snapTicks(), quantizeStrength ?? 1, !!quantizeDuration);
         return;
       }
-      if (!mod && (key === 'h' || key === 'H')) {
+      if (!mod && !e.altKey && (key === 'h' || key === 'H')) {
         e.preventDefault();
         const { humanizeTimingTicks, humanizeVelocity } = project.settings;
         humanizeSelectedNotes(humanizeTimingTicks ?? 20, humanizeVelocity ?? 10);
@@ -240,6 +271,13 @@ export function usePianoRollShortcuts(onShowHelp?: () => void): void {
       if (mod && !e.shiftKey && (key === 'l' || key === 'L')) {
         e.preventDefault();
         useProjectStore.getState().legatoSelectedNotes(0);
+        return;
+      }
+      if (mod && !e.shiftKey && (key === 'u' || key === 'U')) {
+        e.preventDefault();
+        const track = activeTrack();
+        if (!track) return;
+        setNotes(track.id, quickChopNotes(track.notes, snapTicks(), createShortcutNoteId));
         return;
       }
 

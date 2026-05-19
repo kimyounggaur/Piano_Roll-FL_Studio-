@@ -308,7 +308,9 @@ export function exportMxl(project: Project, opts: MusicXmlExportOptions = {}): {
     { path: 'META-INF/container.xml', content: container },
     { path: 'score.musicxml',         content: xml       },
   ]);
-  const blob = new Blob([zip], { type: 'application/vnd.recordare.musicxml' });
+  const blobBytes = new Uint8Array(zip.byteLength);
+  blobBytes.set(zip);
+  const blob = new Blob([blobBytes], { type: 'application/vnd.recordare.musicxml' });
   return { blob, fileName: (opts.fileName ? opts.fileName : defaultBase()) + '.mxl' };
 }
 

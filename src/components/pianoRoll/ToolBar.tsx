@@ -3,6 +3,7 @@ import { useProjectStore } from '../../store/projectStore';
 import type { PianoRollTool, ScaleType, ChordType } from '../../types/music';
 import { CHORD_LABELS } from '../../utils/musicTheory';
 import { snapUnitToTicks } from '../../utils/time';
+import { PianoRollToolsMenu } from './PianoRollToolsMenu';
 import './ToolBar.css';
 
 const TOOLS: { id: PianoRollTool; label: string; icon: string; title: string }[] = [
@@ -69,6 +70,11 @@ export const ToolBar: React.FC = () => {
             <span className="tool-label">{t.label}</span>
           </button>
         ))}
+      </div>
+
+      <div className="toolbar-divider" />
+      <div className="toolbar-group">
+        <PianoRollToolsMenu />
       </div>
 
       <div className="toolbar-divider" />

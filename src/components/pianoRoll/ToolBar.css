@@ -103,6 +103,194 @@
   cursor: not-allowed;
 }
 
+.piano-roll-tools-menu {
+  position: relative;
+}
+
+.tools-menu-trigger {
+  min-width: 64px;
+}
+
+.tools-menu-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  width: 236px;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-surface) 94%, black 6%);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
+}
+
+.tools-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 28px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.tools-menu-item:hover:not(:disabled) {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
+
+.tools-menu-item:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.tools-menu-item kbd {
+  flex: 0 0 auto;
+  min-width: 42px;
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-surface-soft);
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.tool-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(10, 8, 13, 0.42);
+}
+
+.tool-dialog {
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(680px, calc(100vh - 24px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.46);
+}
+
+.tool-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tool-dialog-header h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.tool-dialog-header span {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tool-dialog-icon-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface-soft);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.tool-dialog-body {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  overflow-y: auto;
+}
+
+.tool-dialog-field,
+.tool-dialog-check {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tool-dialog-check {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.tool-dialog-field input,
+.tool-dialog-field select {
+  height: 32px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-soft);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tool-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.tool-dialog-primary,
+.tool-dialog-secondary {
+  min-height: 32px;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tool-dialog-primary {
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: var(--accent-dark);
+}
+
+.tool-dialog-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tool-dialog-secondary {
+  border: 1px solid var(--border);
+  background: var(--bg-surface-soft);
+  color: var(--text-muted);
+}
+
 @media (max-width: 980px) {
   .toolbar {
     flex-wrap: nowrap;
