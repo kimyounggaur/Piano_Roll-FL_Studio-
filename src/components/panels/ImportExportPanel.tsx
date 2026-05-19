@@ -1,7 +1,9 @@
 import React, { useRef, useState } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { importMidi, exportMidi, downloadBlob } from '../../utils/midiFile';
+import { exportMusicXml, exportMxl } from '../../utils/musicXmlFile';
 import { deserializeProject, projectToBlob } from '../../utils/projectSerialization';
+import { NOTE_COLOR_GROUPS } from '../../types/music';
 
 type ImportMode = 'replace' | 'append';
 
@@ -15,8 +17,24 @@ export const ImportExportPanel: React.FC = () => {
   const [mode, setMode] = useState<ImportMode>('append');
   const [excludeMutedNotes, setExcludeMutedNotes] = useState(true);
   const [excludeMutedTracks, setExcludeMutedTracks] = useState(true);
+  // null = all colors; otherwise: set of group indices (0..15)
+  const [colorFilter, setColorFilter] = useState<Set<number> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const toggleColorGroup = (idx: number) => {
+    setColorFilter((prev) => {
+      const next = new Set(prev ?? []);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next.size === 0 ? null : next;
+    });
+  };
+
+  const exportOpts = () => ({
+    excludeMutedNotes,
+    excludeMutedTracks,
+    colorGroups: colorFilter ? Array.from(colorFilter) : undefined,
+  });
 
   // ─────────────────────────────────────────────────────────────────
   //  Import
@@ -52,19 +70,48 @@ export const ImportExportPanel: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────
   //  Export
   // ─────────────────────────────────────────────────────────────────
-  const onExport = () => {
-    setError(null);
+  const guardHasNotes = (): boolean => {
     const totalNotes = project.tracks.reduce((acc, t) => acc + t.notes.length, 0);
     if (totalNotes === 0) {
       setError('프로젝트에 노트가 없어 내보낼 수 없습니다.');
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const onExportMidi = () => {
+    setError(null);
+    if (!guardHasNotes()) return;
     try {
-      const { blob, fileName } = exportMidi(project, { excludeMutedNotes, excludeMutedTracks });
+      const { blob, fileName } = exportMidi(project, exportOpts());
       downloadBlob(blob, fileName);
     } catch (err) {
       console.error(err);
       setError(`MIDI 내보내기 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+    }
+  };
+
+  const onExportMusicXml = () => {
+    setError(null);
+    if (!guardHasNotes()) return;
+    try {
+      const { blob, fileName } = exportMusicXml(project, exportOpts());
+      downloadBlob(blob, fileName);
+    } catch (err) {
+      console.error(err);
+      setError(`MusicXML 내보내기 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+    }
+  };
+
+  const onExportMxl = () => {
+    setError(null);
+    if (!guardHasNotes()) return;
+    try {
+      const { blob, fileName } = exportMxl(project, exportOpts());
+      downloadBlob(blob, fileName);
+    } catch (err) {
+      console.error(err);
+      setError(`MXL 내보내기 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
     }
   };
 
@@ -119,9 +166,64 @@ export const ImportExportPanel: React.FC = () => {
             onChange={(e) => setExcludeMutedTracks(e.target.checked)}
           /> 음소거된 트랙 제외
         </label>
-        <button onClick={onExport} style={buttonStyle}>
-          .mid 파일로 저장
-        </button>
+
+        {/* ── Color-group filter ─────────────────────────────────── */}
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 12, marginBottom: 4, color: '#cdffad' }}>
+            색상 그룹 필터
+            <button
+              type="button"
+              onClick={() => setColorFilter(null)}
+              style={{
+                marginLeft: 8, padding: '0 6px', fontSize: 10,
+                background: 'transparent', color: '#9fe870',
+                border: '1px solid #2b2c28', borderRadius: 3, cursor: 'pointer',
+              }}
+              title="필터 해제 — 모든 색 내보내기"
+            >
+              모두
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: '#868685', marginBottom: 6 }}>
+            {colorFilter === null
+              ? '전체 노트 내보내기'
+              : colorFilter.size === 0
+                ? '(선택 없음 — 결과가 비어 있을 수 있음)'
+                : `선택된 ${colorFilter.size}개 그룹의 노트만 내보내기`}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
+            {NOTE_COLOR_GROUPS.map((c, idx) => {
+              const active = colorFilter?.has(idx) ?? false;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => toggleColorGroup(idx)}
+                  title={idx === 0 ? '그룹 없음 (트랙 색)' : `그룹 ${idx}`}
+                  style={{
+                    width: '100%', height: 20, borderRadius: 4, cursor: 'pointer',
+                    background: idx === 0 ? 'transparent' : c,
+                    border: active ? '2px solid #9fe870' : '1px solid #2b2c28',
+                    outline: idx === 0 && active ? '1px dashed #9fe870' : 'none',
+                    padding: 0,
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+          <button onClick={onExportMidi} style={buttonStyle}>
+            .mid로 저장
+          </button>
+          <button onClick={onExportMusicXml} style={buttonStyle}>
+            .musicxml로 저장
+          </button>
+          <button onClick={onExportMxl} style={buttonStyle}>
+            .mxl로 저장
+          </button>
+        </div>
       </section>
 
       {/* ── Project JSON save/load ─────────────────────────────── */}

@@ -108,8 +108,21 @@ export interface ExportOptions {
   excludeMutedNotes?: boolean;
   /** Skip every track where `muted === true`. Default true. */
   excludeMutedTracks?: boolean;
+  /**
+   * If provided, only notes whose colorGroup (parsed as a number) is in
+   * this list are exported. `0` matches notes without an explicit group
+   * (no colorGroup field, or colorGroup === '0').
+   */
+  colorGroups?: number[];
   /** File-name override (without extension). */
   fileName?: string;
+}
+
+/** Returns the group index a note belongs to. Missing/empty/'0' → 0. */
+function parseColorGroup(raw: string | undefined | null): number {
+  if (raw == null || raw === '') return 0;
+  const n = parseInt(String(raw), 10);
+  return Number.isFinite(n) ? n : 0;
 }
 
 /** Returns an export-ready { blob, fileName } pair. */
@@ -131,19 +144,33 @@ export function exportMidi(project: Project, opts: ExportOptions = {}): { blob: 
     measures: 0,
   });
 
+  const colorFilterActive = !!(opts.colorGroups && opts.colorGroups.length > 0);
+
   for (const track of project.tracks) {
     if (excludeMutedTracks && track.muted) continue;
     const mt = midi.addTrack();
     mt.name = track.name;
     mt.channel = Math.max(0, (track.channel ?? 1) - 1);
+    let wrote = 0;
     for (const n of track.notes) {
       if (excludeMutedNotes && n.muted) continue;
+      if (colorFilterActive) {
+        const g = parseColorGroup(n.colorGroup);
+        if (!opts.colorGroups!.includes(g)) continue;
+      }
       mt.addNote({
         midi: n.pitch,
         ticks: n.startTick,
         durationTicks: Math.max(1, n.durationTicks),
         velocity: Math.max(0.01, Math.min(1, n.velocity / 127)),
       });
+      wrote++;
+    }
+    // Drop empty track to keep the file tidy when a colour filter removes
+    // every note in this track. @tonejs/midi tolerates empty tracks, but
+    // many DAWs render a stub channel for them.
+    if (wrote === 0 && colorFilterActive) {
+      midi.tracks.pop();
     }
   }
 
