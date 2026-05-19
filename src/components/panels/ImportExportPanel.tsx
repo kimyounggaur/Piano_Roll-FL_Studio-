@@ -268,44 +268,43 @@ export const ImportExportPanel: React.FC = () => {
             <div style={{ fontSize: 12, marginBottom: 6, color: 'var(--text-primary)' }}>
               색상별 빠른 내보내기
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {usedColorGroups.map(({ group, count }) => (
                 <div
                   key={group}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '18px 1fr auto auto auto',
-                    gap: 6,
-                    alignItems: 'center',
-                  }}
+                  style={quickExportRowStyle}
                 >
-                  <span
-                    style={{
-                      width: 16, height: 16, borderRadius: 4,
-                      background: group === 0 ? 'transparent' : NOTE_COLOR_GROUPS[group],
-                      border: '1px solid var(--border)',
-                      display: 'inline-block',
-                    }}
-                    title={group === 0 ? '그룹 없음 (트랙 색)' : `그룹 ${group}`}
-                  />
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    {group === 0 ? '그룹 없음' : `그룹 ${group}`} · 노트 {count}개
-                  </span>
-                  <button
-                    onClick={() => exportSingleColor(group, 'mid')}
-                    style={smallButtonStyle}
-                    title="이 색상의 노트만 .mid로 저장"
-                  >.mid</button>
-                  <button
-                    onClick={() => exportSingleColor(group, 'musicxml')}
-                    style={smallButtonStyle}
-                    title="이 색상의 노트만 .musicxml로 저장"
-                  >.xml</button>
-                  <button
-                    onClick={() => exportSingleColor(group, 'mxl')}
-                    style={smallButtonStyle}
-                    title="이 색상의 노트만 .mxl로 저장"
-                  >.mxl</button>
+                  <div style={quickExportInfoStyle}>
+                    <span
+                      style={{
+                        width: 16, height: 16, borderRadius: 4, flex: '0 0 16px',
+                        background: group === 0 ? 'transparent' : NOTE_COLOR_GROUPS[group],
+                        border: '1px solid var(--border)',
+                        display: 'inline-block',
+                      }}
+                      title={group === 0 ? '그룹 없음 (트랙 색)' : `그룹 ${group}`}
+                    />
+                    <span style={quickExportLabelStyle}>
+                      {group === 0 ? '그룹 없음' : `그룹 ${group}`} · 노트 {count}개
+                    </span>
+                  </div>
+                  <div style={quickExportActionsStyle}>
+                    <button
+                      onClick={() => exportSingleColor(group, 'mid')}
+                      style={smallButtonStyle}
+                      title="이 색상의 노트만 .mid로 저장"
+                    >.mid</button>
+                    <button
+                      onClick={() => exportSingleColor(group, 'musicxml')}
+                      style={smallButtonStyle}
+                      title="이 색상의 노트만 .musicxml로 저장"
+                    >.xml</button>
+                    <button
+                      onClick={() => exportSingleColor(group, 'mxl')}
+                      style={smallButtonStyle}
+                      title="이 색상의 노트만 .mxl로 저장"
+                    >.mxl</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -376,9 +375,39 @@ const buttonStyle: React.CSSProperties = {
   border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600,
 };
 const smallButtonStyle: React.CSSProperties = {
-  padding: '2px 6px', fontSize: 10, background: 'var(--bg-surface)',
+  minWidth: 42, minHeight: 26, padding: '3px 7px', fontSize: 10, background: 'var(--bg-surface)',
   color: 'var(--text-secondary)', border: '1px solid var(--border)',
-  borderRadius: 3, cursor: 'pointer', fontWeight: 600,
+  borderRadius: 4, cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap',
+};
+const quickExportRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  gap: 5,
+  padding: '6px 7px',
+  background: 'color-mix(in srgb, var(--bg-surface) 72%, transparent)',
+  border: '1px solid var(--border)',
+  borderRadius: 5,
+};
+const quickExportInfoStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 7,
+};
+const quickExportLabelStyle: React.CSSProperties = {
+  minWidth: 0,
+  fontSize: 11,
+  lineHeight: 1.3,
+  color: 'var(--text-muted)',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  wordBreak: 'keep-all',
+};
+const quickExportActionsStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gap: 5,
 };
 
 function defaultBase(): string {
