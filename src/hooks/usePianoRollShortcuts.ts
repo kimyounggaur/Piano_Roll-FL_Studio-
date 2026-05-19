@@ -28,6 +28,19 @@ export interface ShortcutSpec {
   group: 'transport' | 'tool' | 'edit' | 'move' | 'view';
 }
 
+export const SNAP_KEY_TO_UNIT: Record<string, SnapValue> = {
+  '1': '1/1',
+  '2': '1/4',
+  '3': '1/8',
+  '4': '1/16',
+  '5': '1/32',
+  '6': '1/64',
+  '7': '1/8T',
+  '8': '1/16T',
+  '9': '1/32T',
+  '0': '1/64T',
+};
+
 export const SHORTCUT_CATALOG: ShortcutSpec[] = [
   { keys: 'Space',           description: '재생 / 정지',              group: 'transport' },
   { keys: 'D',               description: '그리기 툴',                group: 'tool' },
@@ -65,8 +78,8 @@ export const SHORTCUT_CATALOG: ShortcutSpec[] = [
   { keys: '← / →',           description: '선택 노트 한 grid 이동',   group: 'move' },
   { keys: 'Shift + ← / →',   description: '선택 노트 길이 조절',      group: 'move' },
   { keys: 'Ctrl/⌘ + +/-',    description: '가로 줌 인/아웃',          group: 'view' },
-  { keys: '1-7',             description: '스냅: 1/1~1/64',           group: 'view' },
-  { keys: '8 / 9 / 0',      description: '스냅: 1/4T / 1/8T / 1/16T', group: 'view' },
+  { keys: '1-6',             description: '스냅: 1/1, 1/4, 1/8, 1/16, 1/32, 1/64', group: 'view' },
+  { keys: '7 / 8 / 9 / 0',   description: '스냅: 1/8T / 1/16T / 1/32T / 1/64T', group: 'view' },
   { keys: '?',               description: '단축키 도움말',            group: 'view' },
 ];
 
@@ -311,13 +324,9 @@ export function usePianoRollShortcuts(onShowHelp?: () => void): void {
 
       // ── Snap unit (bare digit keys 1-0, no modifier) ────
       if (!mod && !e.shiftKey && !e.altKey) {
-        const snapMap: Record<string, SnapValue> = {
-          '1': '1/1', '2': '1/2', '3': '1/4', '4': '1/8', '5': '1/16',
-          '6': '1/32', '7': '1/64', '8': '1/4T', '9': '1/8T', '0': '1/16T',
-        };
-        if (snapMap[key]) {
+        if (SNAP_KEY_TO_UNIT[key]) {
           e.preventDefault();
-          useProjectStore.getState().setSnapUnit(snapMap[key]);
+          useProjectStore.getState().setSnapUnit(SNAP_KEY_TO_UNIT[key]);
           return;
         }
       }

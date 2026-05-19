@@ -168,6 +168,7 @@ export function barBeatToTick(
  *   snapUnitToTicks('1/4',   480) → 480
  *   snapUnitToTicks('1/16',  480) → 120
  *   snapUnitToTicks('1/8T',  480) → 160  (240 × 2/3)
+ *   snapUnitToTicks('1/32T', 480) → 40   (60 × 2/3)
  *   snapUnitToTicks('1/64',  480) → 30
  */
 export function snapUnitToTicks(unit: SnapValue, ppq: number): number {

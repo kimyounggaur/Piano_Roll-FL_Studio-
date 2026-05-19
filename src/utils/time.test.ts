@@ -55,5 +55,9 @@ describe('time conversions', () => {
     expect(snapUnitToTicks('1/8', 480)).toBe(240);
     expect(snapUnitToTicks('1/16', 480)).toBe(120);
     expect(snapUnitToTicks('1/32', 480)).toBe(60);
+    expect(snapUnitToTicks('1/8T', 480)).toBe(160);
+    expect(snapUnitToTicks('1/16T', 480)).toBe(80);
+    expect(snapUnitToTicks('1/32T', 480)).toBe(40);
+    expect(snapUnitToTicks('1/64T', 480)).toBe(20);
   });
 });
