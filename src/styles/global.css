@@ -1,93 +1,90 @@
-/* ── Reset ──────────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-/* ── Wise Dark Design System ────────────────────────────────────── */
 :root {
-  /* Core palette — Wise near-black as the canvas */
-  --bg-primary:    #0e0f0c;          /* Wise near-black */
-  --bg-secondary:  #141610;          /* Slightly lifted surface */
-  --bg-surface:    #1c1f18;          /* Panel / card surface */
-  --bg-canvas:     #090a08;          /* Deepest canvas background */
-  --bg-hover:      rgba(159,232,112,0.06); /* Wise Green tint hover */
+  color-scheme: dark;
 
-  /* Wise Green accent */
-  --accent:        #9fe870;          /* Wise Green — buttons, accents, notes */
-  --accent-dark:   #163300;          /* Dark Green — text ON green */
-  --accent-dim:    #7bc554;          /* Hover green */
-  --accent-subtle: rgba(159,232,112,0.12);
-  --accent-border: rgba(159,232,112,0.22);
+  /* Soft studio palette */
+  --bg-primary: #17141b;
+  --bg-secondary: #211d27;
+  --bg-surface: #292431;
+  --bg-surface-soft: #322c3a;
+  --bg-canvas: #111018;
+  --bg-hover: rgba(255, 153, 181, 0.1);
 
-  /* Text — inverted Wise palette */
-  --text-primary:  #e8ebe6;          /* Wise Light Surface → primary text in dark */
-  --text-secondary:#b8bcb5;          /* Lighter mid-gray */
-  --text-muted:    #868685;          /* Wise Gray */
-  --text-disabled: #454745;          /* Wise Warm Dark */
+  --accent: #ff9db5;
+  --accent-dark: #3b202b;
+  --accent-dim: #ff849f;
+  --accent-subtle: rgba(255, 157, 181, 0.16);
+  --accent-border: rgba(255, 157, 181, 0.36);
 
-  /* Borders — ring shadow philosophy */
-  --border:        rgba(232,235,230,0.09);
-  --border-accent: rgba(159,232,112,0.25);
-  --ring:          rgba(14,15,12,0.12) 0 0 0 1px;
+  --mint: #9ee7d8;
+  --mint-subtle: rgba(158, 231, 216, 0.14);
+  --coral: #ff9a7a;
+  --butter: #f6d878;
+  --lavender: #b9adc9;
 
-  /* Semantic */
-  --danger:        #d03238;          /* Wise Danger Red */
-  --warning:       #ffd11a;          /* Wise Warning Yellow */
-  --positive:      #054d28;          /* Wise Positive Green */
-  --info-bg:       rgba(56,200,255,0.10);
+  --text-primary: #fbf4f7;
+  --text-secondary: #d8cad8;
+  --text-muted: #a99aad;
+  --text-disabled: #6f6373;
 
-  /* Notes */
-  --note-default:  #9fe870;          /* Wise Green */
-  --note-selected: #ffd11a;          /* Wise Warning Yellow */
-  --ghost-note:    rgba(159,232,112,0.28);
+  --border: rgba(251, 244, 247, 0.11);
+  --border-strong: rgba(251, 244, 247, 0.18);
+  --border-accent: rgba(255, 157, 181, 0.34);
+  --ring: 0 0 0 1px rgba(255, 157, 181, 0.32);
 
-  /* Piano keys */
-  --black-key:     #0e0f0c;
-  --black-key-side:#1e2018;
-  --white-key:     #e8ebe6;
-  --white-key-scale:#d4f0b5;         /* Light Mint tint for in-scale keys */
+  --danger: #ff6f83;
+  --warning: #f6d878;
+  --positive: #9ee7d8;
+  --info-bg: rgba(158, 231, 216, 0.12);
 
-  /* Grid lines */
-  --grid-bar:      rgba(232,235,230,0.20);
-  --grid-beat:     rgba(232,235,230,0.08);
-  --grid-snap:     rgba(232,235,230,0.035);
+  --note-default: #ff9db5;
+  --note-selected: #f6d878;
+  --ghost-note: rgba(158, 231, 216, 0.28);
 
-  /* Radii — Wise scale */
-  --radius-xs:     4px;
-  --radius-sm:     10px;
-  --radius-md:     16px;
-  --radius-lg:     30px;
-  --radius-pill:   9999px;
+  --black-key: #16121a;
+  --black-key-side: #241e2b;
+  --white-key: #f4edf0;
+  --white-key-scale: #e3faf3;
 
-  /* Layout dimensions */
-  --transport-height: 56px;
-  --toolbar-height:   44px;
-  --keyboard-width:   72px;
-  --velocity-height:  100px;
-  --track-panel-w:    210px;
-  --inspector-w:      160px;
+  --grid-bar: rgba(251, 244, 247, 0.22);
+  --grid-beat: rgba(251, 244, 247, 0.1);
+  --grid-snap: rgba(251, 244, 247, 0.045);
+
+  --shadow-soft: 0 10px 24px rgba(15, 11, 18, 0.24);
+  --shadow-control: 0 2px 8px rgba(15, 11, 18, 0.18);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-pill: 9999px;
+
+  --transport-height: 58px;
+  --toolbar-height: 48px;
+  --keyboard-width: 72px;
+  --velocity-height: 100px;
+  --track-panel-w: 214px;
+  --inspector-w: 168px;
 }
 
-/* ── Base ───────────────────────────────────────────────────────── */
 html, body, #root {
   height: 100%;
   overflow: hidden;
   background: var(--bg-primary);
   color: var(--text-primary);
-
-  /* Wise: Inter 600 as default reading weight */
   font-family: 'Noto Sans KR', 'Inter', Helvetica, Arial, sans-serif;
   font-size: 13px;
   font-weight: 600;
-  /* Wise: "calt" on all text */
   font-feature-settings: "calt" 1;
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
 
-/* ── Interactive elements ───────────────────────────────────────── */
 button {
   cursor: pointer;
   border: none;
@@ -96,26 +93,35 @@ button {
   color: inherit;
   font: inherit;
   font-feature-settings: "calt" 1;
-  /* Wise: scale animation on all buttons */
-  transition: transform 0.18s ease, background 0.15s ease, color 0.15s ease;
+  transition:
+    transform 0.16s ease,
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
 }
-button:hover  { transform: scale(1.05); }
-button:active { transform: scale(0.95); }
-/* Keyboard focus — visible only for non-mouse focus */
+button:hover { transform: translateY(-1px); }
+button:active { transform: translateY(0); }
+
 button:focus-visible,
-[role="button"]:focus-visible {
+[role="button"]:focus-visible,
+select:focus-visible,
+input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: var(--radius-xs);
 }
+
 button[disabled],
 button[aria-disabled="true"] {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 0.48;
   transform: none !important;
 }
 
-select, input[type='number'], input[type='text'] {
+select,
+input[type='number'],
+input[type='text'] {
+  min-height: 28px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   color: var(--text-primary);
@@ -123,54 +129,84 @@ select, input[type='number'], input[type='text'] {
   padding: 4px 8px;
   font: inherit;
   font-feature-settings: "calt" 1;
-  transition: box-shadow 0.15s;
-}
-select:focus, input:focus {
-  outline: none;
-  box-shadow: rgba(14,15,12,0.12) 0 0 0 1px, 0 0 0 2px var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
 }
 
-/* ── Wise Primary Button ────────────────────────────────────────── */
+select:hover,
+input[type='number']:hover,
+input[type='text']:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-surface-soft);
+}
+
+select:focus,
+input:focus {
+  outline: none;
+  border-color: var(--accent-border);
+  box-shadow: var(--ring), 0 0 0 3px rgba(255, 157, 181, 0.12);
+}
+
+input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
+input[type='range'] {
+  accent-color: var(--accent);
+}
+
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--accent);
   color: var(--accent-dark);
-  padding: 8px 20px;
+  padding: 8px 18px;
   border-radius: var(--radius-pill);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   white-space: nowrap;
+  box-shadow: var(--shadow-control);
 }
-.btn-primary:hover  { transform: scale(1.05); background: var(--accent); }
-.btn-primary:active { transform: scale(0.95); }
+.btn-primary:hover {
+  background: var(--accent-dim);
+}
 
-/* ── Scrollbars ─────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(17, 16, 24, 0.65);
+}
 ::-webkit-scrollbar-thumb {
-  background: var(--border-accent);
+  background: rgba(185, 173, 201, 0.34);
   border-radius: var(--radius-pill);
+  border: 2px solid rgba(17, 16, 24, 0.65);
 }
-::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-border);
+}
 
-/* ── Tool indicator — active tool gets the accent ring ─────────── */
 .tool-button {
   position: relative;
   padding: 6px 10px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   background: transparent;
 }
-.tool-button:hover  { background: var(--accent-subtle); color: var(--text-primary); }
+.tool-button:hover {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
 .tool-button.active {
   background: var(--accent);
   color: var(--accent-dark);
-  box-shadow: 0 0 0 1px var(--accent-border);
+  box-shadow: var(--ring);
 }
 
-/* ── Tooltip — pure CSS, no JS dependency ──────────────────────── */
 [data-tooltip] {
   position: relative;
 }
@@ -180,18 +216,19 @@ select:focus, input:focus {
   left: 50%;
   bottom: calc(100% + 6px);
   transform: translateX(-50%) translateY(2px);
-  background: #15170f;
+  background: #211d27;
   color: var(--text-primary);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   padding: 4px 8px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-accent);
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s, transform 0.15s;
   z-index: 99;
+  box-shadow: var(--shadow-soft);
 }
 [data-tooltip]:hover::after,
 [data-tooltip]:focus-visible::after {
@@ -199,53 +236,58 @@ select:focus, input:focus {
   transform: translateX(-50%) translateY(0);
 }
 
-/* ── Note appearance helpers (used by canvas+legend) ────────────── */
 .note-chip {
   display: inline-block;
-  width: 14px; height: 10px;
-  border-radius: 2px;
+  width: 14px;
+  height: 10px;
+  border-radius: 3px;
   background: var(--note-default);
 }
 .note-chip--selected { background: var(--note-selected); }
-.note-chip--ghost    { background: var(--ghost-note); }
+.note-chip--ghost { background: var(--ghost-note); }
 
-/* ── Playhead emphasis when playing ─────────────────────────────── */
 .is-playing .playhead {
-  filter: drop-shadow(0 0 4px var(--danger));
+  filter: drop-shadow(0 0 5px var(--danger));
 }
 
-/* ── Responsive breakpoints ─────────────────────────────────────── */
-/* Desktop sweet spot: 1440px. Anything below 1024 collapses the
-   inspector and shrinks tracks. Mobile (≤ 640px) is read-only —
-   editing controls hidden, viewport falls back to scroll-only. */
 @media (max-width: 1280px) {
   :root {
-    --track-panel-w: 180px;
-    --inspector-w:   140px;
+    --track-panel-w: 188px;
+    --inspector-w: 148px;
   }
-}
-@media (max-width: 1024px) {
-  :root {
-    --track-panel-w: 160px;
-    --inspector-w:   0px;
-  }
-  .inspector-panel { display: none !important; }
-}
-@media (max-width: 640px) {
-  /* Read-only mode — hide editing surfaces */
-  .toolbar,
-  .velocity-lane-wrapper,
-  .track-panel-actions {
-    display: none !important;
-  }
-  body { user-select: text; }
 }
 
-/* ── Reduced motion — respect OS setting ────────────────────────── */
+@media (max-width: 1024px) {
+  :root {
+    --track-panel-w: 166px;
+    --inspector-w: 0px;
+  }
+  .inspector-panel {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .transport-bar,
+  .toolbar {
+    align-items: flex-start;
+    overflow-x: auto;
+  }
+  .velocity-lane-wrapper {
+    min-height: 82px;
+  }
+  body {
+    user-select: text;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
-  button:hover, button:active { transform: none !important; }
+  button:hover,
+  button:active {
+    transform: none !important;
+  }
 }

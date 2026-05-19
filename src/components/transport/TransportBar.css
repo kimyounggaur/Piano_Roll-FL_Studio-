@@ -1,112 +1,116 @@
-/* ── Wise-styled Transport Bar ──────────────────────────────────── */
 .transport-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: var(--transport-height);
+  gap: 7px;
+  min-height: var(--transport-height);
   background: var(--bg-secondary);
-  /* Wise ring-shadow border */
   border-bottom: 1px solid var(--border);
-  padding: 0 16px;
+  padding: 8px 16px;
   flex-shrink: 0;
   overflow-x: auto;
+  overflow-y: hidden;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .transport-section {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-/* Wise: weight-900 uppercase label */
 .transport-label {
   font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  color: var(--text-muted);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--lavender);
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
-/* ── Play / Stop / Loop / Metronome — Wise pill buttons ─────────── */
 .transport-btn {
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-pill);         /* Wise: pill */
+  border-radius: var(--radius-pill);
   background: var(--bg-surface);
-  color: var(--text-muted);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
   font-size: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* transition handled by global button rule */
+  box-shadow: var(--shadow-control);
 }
+
 .transport-btn:hover {
   background: var(--accent-subtle);
-  color: var(--accent);
+  border-color: var(--border-accent);
+  color: var(--text-primary);
 }
-/* Wise Green primary for active transport buttons */
+
 .transport-btn.active {
   background: var(--accent);
   color: var(--accent-dark);
-  box-shadow: 0 0 0 1px var(--accent-dim);
+  border-color: transparent;
+  box-shadow: 0 4px 14px rgba(255, 157, 181, 0.24);
 }
-/* Override global scale so transport-btn doesn't grow too much */
-.transport-btn:hover  { transform: scale(1.05); }
-.transport-btn:active { transform: scale(0.95); }
 
-/* ── Position display ───────────────────────────────────────────── */
 .transport-position {
-  min-width: 80px;
+  min-width: 92px;
   justify-content: center;
-  background: var(--bg-surface);
+  background: #181520;
   border: 1px solid var(--border-accent);
-  border-radius: var(--radius-md);   /* Wise: card-radius for display widgets */
-  padding: 4px 12px;
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .position-display {
   font-size: 18px;
-  font-weight: 900;            /* Wise: 900 for all display numbers */
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  color: var(--accent);
+  color: var(--mint);
   line-height: 1;
 }
 
-/* ── Inputs ──────────────────────────────────────────────────────── */
 .transport-input {
-  height: 28px;
+  height: 30px;
   text-align: center;
-  font-weight: 600;
+  font-weight: 700;
   border-radius: var(--radius-sm);
 }
-.bpm-input { width: 58px; }
-.ts-input   { width: 42px; }
+.bpm-input { width: 60px; }
+.ts-input { width: 44px; }
 
-/* ── Divider between sections ───────────────────────────────────── */
 .transport-divider {
   width: 1px;
-  height: 22px;
+  height: 24px;
   background: var(--border);
   margin: 0 4px;
   flex-shrink: 0;
 }
 
-/* ── Project name chip ───────────────────────────────────────────── */
 .transport-project-name {
   margin-left: auto;
 }
+
 .project-name {
+  display: inline-block;
   font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: rgba(158, 231, 216, 0.08);
+  border: 1px solid rgba(158, 231, 216, 0.22);
   border-radius: var(--radius-pill);
-  padding: 3px 12px;
-  max-width: 160px;
+  padding: 5px 12px;
+  max-width: 170px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .transport-project-name {
+    margin-left: 0;
+  }
 }
