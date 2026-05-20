@@ -281,8 +281,34 @@ export const ArrangementView: React.FC = () => {
     const rawTick = tickFromLaneClientX(e.clientX);
     const snappedTick = snapTickForDrop(rawTick);
     setPlayheadTick(snappedTick);
-    if ((activeTool === 'draw' || activeTool === 'paint') && track) {
+    if (activeTool === 'draw' && track) {
       addMidiClipFromTrack(track.id, snappedTick);
+      return;
+    }
+    if (activeTool === 'paint' && track) {
+      // Paint mode: drop one clip immediately, then keep painting as the
+      // cursor moves into new (track, snap-tick) cells. A Set of "trackId@tick"
+      // keys prevents duplicate clips on the same cell during one stroke.
+      const painted = new Set<string>();
+      const place = (tid: string, tick: number) => {
+        const key = `${tid}@${tick}`;
+        if (painted.has(key)) return;
+        painted.add(key);
+        addMidiClipFromTrack(tid, tick);
+      };
+      place(track.id, snappedTick);
+      const onPaintMove = (ev: MouseEvent) => {
+        const tr  = trackFromLaneClientY(ev.clientY);
+        if (!tr) return;
+        const tk = snapTickForDrop(tickFromLaneClientX(ev.clientX));
+        place(tr.id, tk);
+      };
+      const onPaintUp = () => {
+        window.removeEventListener('mousemove', onPaintMove);
+        window.removeEventListener('mouseup', onPaintUp);
+      };
+      window.addEventListener('mousemove', onPaintMove);
+      window.addEventListener('mouseup', onPaintUp);
       return;
     }
     if (!e.shiftKey && !e.metaKey && !e.ctrlKey) deselectAllClips();

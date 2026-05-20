@@ -39,7 +39,14 @@ export const ArrangementEditMenu: React.FC = () => {
 
   return (
     <span className="arrangement-dropdown">
-      <button className={open ? 'active' : ''} onClick={() => setOpen((v) => !v)}>Edit</button>
+      <button
+        className={`arrangement-icon-btn${open ? ' active' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        title="Edit 메뉴"
+      >
+        <span className="arrangement-icon-btn__ico" aria-hidden="true">✏️</span>
+        <span className="arrangement-icon-btn__lbl">편집 ▾</span>
+      </button>
       {open && (
         <div className="arrangement-menu arrangement-menu--inline">
           <button onClick={() => run(cutSelectedClips)}>잘라내기 Ctrl+X</button>

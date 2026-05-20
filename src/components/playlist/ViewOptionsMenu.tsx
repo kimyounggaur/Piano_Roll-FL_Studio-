@@ -14,7 +14,14 @@ export const ViewOptionsMenu: React.FC = () => {
 
   return (
     <span className="arrangement-dropdown">
-      <button className={open ? 'active' : ''} onClick={() => setOpen((v) => !v)}>View</button>
+      <button
+        className={`arrangement-icon-btn${open ? ' active' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        title="View 메뉴"
+      >
+        <span className="arrangement-icon-btn__ico" aria-hidden="true">👁</span>
+        <span className="arrangement-icon-btn__lbl">보기 ▾</span>
+      </button>
       {open && (
         <div className="arrangement-menu arrangement-menu--inline arrangement-menu--wide">
           <label>Grid color <input type="color" value={view.gridColor} onChange={(e) => setPlaylistView({ gridColor: e.target.value })} /></label>

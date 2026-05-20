@@ -28,7 +28,14 @@ export const SnapMenu: React.FC = () => {
 
   return (
     <span className="arrangement-dropdown">
-      <button className={open ? 'active' : ''} onClick={() => setOpen((v) => !v)}>Snap: {snapMode}</button>
+      <button
+        className={`arrangement-icon-btn${open ? ' active' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        title={`Snap: ${snapMode}`}
+      >
+        <span className="arrangement-icon-btn__ico" aria-hidden="true">⌶</span>
+        <span className="arrangement-icon-btn__lbl">스냅: {snapMode} ▾</span>
+      </button>
       {open && (
         <div className="arrangement-menu arrangement-menu--inline arrangement-menu--compact">
           {SNAP_OPTIONS.map((option) => (

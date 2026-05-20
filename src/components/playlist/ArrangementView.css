@@ -628,3 +628,54 @@
   font-size: 11px;
   pointer-events: none;
 }
+
+/* ── Icon-stacked toolbar buttons ────────────────────────────────────── */
+.arrangement-view__toolbar .arrangement-icon-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 46px;
+  height: auto;
+  min-height: 40px;
+  padding: 3px 6px;
+  line-height: 1;
+}
+.arrangement-view__toolbar .arrangement-icon-btn__ico {
+  font-size: 15px;
+  line-height: 1;
+  display: block;
+}
+.arrangement-view__toolbar .arrangement-icon-btn__lbl {
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+  white-space: nowrap;
+  color: inherit;
+  opacity: 0.85;
+}
+.arrangement-view__toolbar .arrangement-icon-btn.active .arrangement-icon-btn__lbl {
+  opacity: 1;
+}
+
+/* Inline selects (Quantize / Drop) get the same vertical stacking. */
+.arrangement-view__toolbar .arrangement-toolbar-select {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  color: var(--text-muted, #9aa399);
+}
+.arrangement-view__toolbar .arrangement-toolbar-select__lbl {
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-weight: 700;
+  opacity: 0.85;
+}
+.arrangement-view__toolbar .arrangement-toolbar-select select {
+  min-height: 22px;
+  padding: 2px 4px;
+  font-size: 10px;
+}

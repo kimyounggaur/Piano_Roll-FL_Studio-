@@ -15,7 +15,14 @@ export const ZoomMenu: React.FC = () => {
 
   return (
     <span className="arrangement-dropdown">
-      <button className={open ? 'active' : ''} onClick={() => setOpen((v) => !v)}>Zoom</button>
+      <button
+        className={`arrangement-icon-btn${open ? ' active' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        title="Zoom 메뉴"
+      >
+        <span className="arrangement-icon-btn__ico" aria-hidden="true">🔍</span>
+        <span className="arrangement-icon-btn__lbl">확대 ▾</span>
+      </button>
       {open && (
         <div className="arrangement-menu arrangement-menu--inline">
           <button onClick={() => run(zoomInPlaylist)}>줌 인 PageUp</button>

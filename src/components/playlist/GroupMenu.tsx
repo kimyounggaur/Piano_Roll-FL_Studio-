@@ -12,7 +12,14 @@ export const GroupMenu: React.FC = () => {
 
   return (
     <span className="arrangement-dropdown">
-      <button className={open ? 'active' : ''} onClick={() => setOpen((v) => !v)}>Group</button>
+      <button
+        className={`arrangement-icon-btn${open ? ' active' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        title="Group 메뉴"
+      >
+        <span className="arrangement-icon-btn__ico" aria-hidden="true">⇄</span>
+        <span className="arrangement-icon-btn__lbl">그룹 ▾</span>
+      </button>
       {open && (
         <div className="arrangement-menu arrangement-menu--inline">
           <button onClick={() => { groupSelectedTracks(); setOpen(false); }}>선택 트랙 그룹화 Shift+G</button>

@@ -22,7 +22,14 @@ export const SelectMenu: React.FC = () => {
 
   return (
     <span className="arrangement-dropdown">
-      <button className={open ? 'active' : ''} onClick={() => setOpen((v) => !v)}>Select</button>
+      <button
+        className={`arrangement-icon-btn${open ? ' active' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        title="Selection 메뉴 (전체 선택 / 반전 등)"
+      >
+        <span className="arrangement-icon-btn__ico" aria-hidden="true">☰</span>
+        <span className="arrangement-icon-btn__lbl">선택 메뉴 ▾</span>
+      </button>
       {open && (
         <div className="arrangement-menu arrangement-menu--inline">
           <button onClick={() => run(deselectAllClips)}>선택 해제</button>
