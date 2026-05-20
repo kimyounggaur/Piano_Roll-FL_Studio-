@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useProjectStore } from '../store/projectStore';
+import { SNAP_KEY_TO_UNIT } from '../utils/snapShortcuts';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -28,6 +29,12 @@ export function useArrangementShortcuts(): void {
       if (ctrl && key === 'g') { e.preventDefault(); store.mergePatternClips(); return; }
       if (ctrl && key === 'q') { e.preventDefault(); store.quantizeSelectedClipStartTimes(); return; }
       if (e.altKey && key === 'm') { e.preventDefault(); store.toggleSelectedClipsMute(); return; }
+      if (!ctrl && !shift && !e.altKey && SNAP_KEY_TO_UNIT[e.key]) {
+        e.preventDefault();
+        store.setSnapUnit(SNAP_KEY_TO_UNIT[e.key]);
+        store.setPlaylistView({ snapMode: 'main' });
+        return;
+      }
       if (key === '7') { store.pitchSelectedAudioClips(1); return; }
       if (key === '8') { store.pitchSelectedAudioClips(-1); return; }
       if (key === '9') { store.reverseSelectedAudioClips(); return; }

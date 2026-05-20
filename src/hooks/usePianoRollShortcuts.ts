@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useProjectStore } from '../store/projectStore';
-import type { Note, PianoRollTool, SnapValue, ActiveView } from '../types/music';
+import type { Note, PianoRollTool, ActiveView } from '../types/music';
+import { SNAP_KEY_TO_UNIT } from '../utils/snapShortcuts';
 import { dispatchOpenToolDialog, quickChopNotes, type ToolDialogKind } from '../components/pianoRoll/toolsMenuModel';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -28,18 +29,7 @@ export interface ShortcutSpec {
   group: 'transport' | 'tool' | 'edit' | 'move' | 'view';
 }
 
-export const SNAP_KEY_TO_UNIT: Record<string, SnapValue> = {
-  '1': '1/1',
-  '2': '1/2',
-  '3': '1/4',
-  '4': '1/8',
-  '5': '1/16',
-  '6': '1/32',
-  '7': '1/64',
-  '8': '1/8T',
-  '9': '1/16T',
-  '0': '1/32T',
-};
+export { SNAP_KEY_TO_UNIT };
 
 export const SHORTCUT_CATALOG: ShortcutSpec[] = [
   { keys: 'Space',           description: '재생 / 정지',              group: 'transport' },

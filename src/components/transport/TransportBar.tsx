@@ -9,6 +9,7 @@ import {
 } from '../../audio/toneEngine';
 import { formatTickFull } from '../../utils/time';
 import type { SnapUnit, ActiveView } from '../../types/music';
+import { SNAP_SHORTCUT_OPTIONS } from '../../utils/snapShortcuts';
 import {
   applyThemeMode,
   getNextThemeMode,
@@ -24,17 +25,12 @@ const VIEW_TABS: { id: ActiveView; label: string }[] = [
   { id: 'automation',  label: '⚡ Automation' },
 ];
 
-const SNAP_OPTIONS: SnapUnit[] = [
-  '1/1', '1/2', '1/4', '1/8', '1/16', '1/32', '1/64',
-  '1/8T', '1/16T', '1/32T',
-];
-
 export const TransportBar: React.FC = () => {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredThemeMode());
   const {
     project, isPlaying, isLooping, isMetronome, playheadTick,
     updateSettings, setIsPlaying, setIsLooping, setIsMetronome,
-    setPlayheadTick, totalTicks,
+    setPlayheadTick, totalTicks, setSnapUnit, setPlaylistView,
   } = useProjectStore();
   const activeView   = useProjectStore((s) => s.activeView);
   const setActiveView = useProjectStore((s) => s.setActiveView);
@@ -80,6 +76,13 @@ export const TransportBar: React.FC = () => {
     updateSettings({ bpm });
     setEngineBpm(bpm);
   }, [updateSettings]);
+
+  const handleSnapChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSnapUnit(e.target.value as SnapUnit);
+    if (activeView === 'audio-edit') {
+      setPlaylistView({ snapMode: 'main' });
+    }
+  }, [activeView, setPlaylistView, setSnapUnit]);
 
   const posText  = formatTickFull(playheadTick, settings.timeSignature, settings.ppq);
   const nextThemeMode = getNextThemeMode(themeMode);
@@ -186,9 +189,11 @@ export const TransportBar: React.FC = () => {
         <select
           className="transport-input"
           value={settings.snapUnit}
-          onChange={(e) => updateSettings({ snapUnit: e.target.value as SnapUnit })}
+          onChange={handleSnapChange}
         >
-          {SNAP_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+          {SNAP_SHORTCUT_OPTIONS.map(({ key, unit }) => (
+            <option key={unit} value={unit}>{key} = {unit}</option>
+          ))}
         </select>
       </div>
 
